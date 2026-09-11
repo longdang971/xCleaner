@@ -302,9 +302,10 @@ struct GroupTile: View {
             HStack(spacing: 8) {
                 TriStateBox(state: group.selection, action: onToggle)
                 Text(group.title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 30, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.55)
                 Spacer(minLength: 4)
             }
 
@@ -314,7 +315,7 @@ struct GroupTile: View {
             Text(group.items.isEmpty && group.needsFullDiskAccess
                  ? "Cần quyền"
                  : Fmt.size(group.selectedSize > 0 ? group.selectedSize : group.totalSize))
-                .font(.cardNumber)
+                .font(.system(size: 21, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.white.opacity(group.selectedSize > 0 ? 1 : 0.55))
                 .contentTransition(.numericText())
                 .lineLimit(1).minimumScaleFactor(0.7)

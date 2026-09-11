@@ -31,10 +31,10 @@ struct ProgressTile: View {
             HStack(spacing: 8) {
                 statusMark
                 Text(stage.title)
-                    .font(.system(size: 16.5, weight: .semibold))
+                    .font(.system(size: 30, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.55)
                 Spacer(minLength: 4)
             }
 
@@ -43,7 +43,7 @@ struct ProgressTile: View {
             switch phase {
             case .done(let bytes):
                 Text(bytes > 0 ? Fmt.size(bytes) : "không có gì")
-                    .font(.cardNumber)
+                    .font(.system(size: 21, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .contentTransition(.numericText())
                     .lineLimit(1).minimumScaleFactor(0.7)
