@@ -202,25 +202,12 @@ struct GroupedModuleView: View {
     }
 
     private var cleanButton: some View {
-        VStack(spacing: 8) {
-            Text(store.totalSelected > 0
-                 ? "Sẽ giải phóng \(Fmt.size(store.totalSelected))"
-                 : "Chưa chọn mục nào")
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(.white)
-                .contentTransition(.numericText())
-                .padding(.horizontal, 14)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(.black.opacity(0.45)))
-
-            CircleActionButton(title: "Dọn", accent: skin.action,
-                               isEnabled: store.totalSelected > 0) {
-                cleanScope = nil
-                if settings.confirmBeforeClean { confirming = true } else { store.clean() }
-            }
+        CircleActionButton(title: "Dọn", accent: skin.action,
+                           isEnabled: store.totalSelected > 0) {
+            cleanScope = nil
+            if settings.confirmBeforeClean { confirming = true } else { store.clean() }
         }
-        .padding(.bottom, 18)
-        .animation(Motion.gentle, value: store.totalSelected)
+        .padding(.bottom, 22)
     }
 }
 
@@ -299,11 +286,11 @@ struct GroupTile: View {
 
                 // Hoạ tiết nền: chỉ mỗi biểu tượng, không khối bao, không viền — để nó đọc ra
                 // như hình in chìm trên thẻ chứ không phải một vật thể dán lên.
-                Image(systemName: group.icon)
-                    .font(.system(size: 72, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(hovering ? 0.26 : 0.19))
+                GroupGlyph(bundleID: group.appBundleID, fallback: group.icon,
+                           size: group.appBundleID == nil ? 72 : 80,
+                           opacity: hovering ? 0.26 : 0.19)
                     .padding(.trailing, 14)
-                    .padding(.top, 14)
+                    .padding(.top, 12)
 
                 // Tối dần về phía dưới trái để chữ luôn tách khỏi nền màu
                 LinearGradient(colors: [.clear, .black.opacity(0.30)],
@@ -381,7 +368,14 @@ struct GroupDetailView: View {
 
     private var header: some View {
         ZStack(alignment: .top) {
-            HeroHeadline(title: group.title,
+            VStack(spacing: 10) {
+                if let bid = group.appBundleID, let icon = AppIconProvider.icon(forBundleID: bid) {
+                    Image(nsImage: icon)
+                        .resizable().interpolation(.high)
+                        .frame(width: 54, height: 54)
+                        .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
+                }
+                HeroHeadline(title: group.title,
                          subtitle: group.needsFullDiskAccess
                             ? "Danh sách chưa đầy đủ — macOS đang chặn đọc thư mục này"
                             : "\(group.selectedCount)/\(group.items.count) mục · \(Fmt.size(groupSelectedSize)) trong \(Fmt.size(group.totalSize))") {
@@ -396,6 +390,7 @@ struct GroupDetailView: View {
                         PillButton(title: "Thoát app", kind: .warning, action: onQuitApp)
                     }
                 }
+                }
             }
 
             HStack {
@@ -407,22 +402,9 @@ struct GroupDetailView: View {
     }
 
     private var cleanButton: some View {
-        VStack(spacing: 8) {
-            Text(groupSelectedSize > 0
-                 ? "Sẽ giải phóng \(Fmt.size(groupSelectedSize)) ở \(group.title)"
-                 : "Chưa chọn mục nào")
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(.white)
-                .contentTransition(.numericText())
-                .padding(.horizontal, 14)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(.black.opacity(0.45)))
-
-            CircleActionButton(title: "Dọn", accent: skin.action,
-                               isEnabled: groupSelectedSize > 0, action: onClean)
-        }
-        .padding(.bottom, 18)
-        .animation(Motion.gentle, value: groupSelectedSize)
+        CircleActionButton(title: "Dọn", accent: skin.action,
+                           isEnabled: groupSelectedSize > 0, action: onClean)
+            .padding(.bottom, 22)
     }
 
     /// Biểu tượng cho từng phần dữ liệu trình duyệt.

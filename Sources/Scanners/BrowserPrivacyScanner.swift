@@ -139,7 +139,8 @@ struct BrowserPrivacyScanner: ModuleScanner {
                 safety: .review,
                 items: items,
                 runningBundleID: running ? browser.bundleID : nil,
-                needsFullDiskAccess: blocked))
+                needsFullDiskAccess: blocked,
+                appBundleID: browser.bundleID))
         }
 
         progress(ScanProgress(fraction: 1, message: "Xong", bytesFound: found))

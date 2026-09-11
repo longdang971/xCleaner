@@ -147,6 +147,8 @@ struct CleanGroup: Identifiable {
     var runningBundleID: String? = nil
     /// macOS đang chặn đọc thư mục của nhóm này; danh sách vì thế chưa đầy đủ.
     var needsFullDiskAccess: Bool = false
+    /// Ứng dụng mà nhóm này thuộc về — dùng biểu tượng thật của nó thay cho ký hiệu chung.
+    var appBundleID: String? = nil
 
     var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
     var selectedSize: Int64 { items.filter(\.isSelected).reduce(0) { $0 + $1.size } }

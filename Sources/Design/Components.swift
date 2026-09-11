@@ -239,6 +239,14 @@ struct CircleActionButton: View {
                     .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
             }
             .frame(width: 84, height: 84)
+            // Quầng tối đặt ở nền chứ không nằm trong ZStack: một con có kích thước cứng
+            // sẽ kéo cả ZStack giãn ra theo nó, và nút phình to gấp đôi.
+            .background(
+                Circle()
+                    .fill(RadialGradient(colors: [.black.opacity(0.45), .clear],
+                                         center: .center, startRadius: 34, endRadius: 104))
+                    .frame(width: 220, height: 220)
+            )
             .shadow(color: accent.opacity(hovering ? 0.85 : 0.55),
                     radius: hovering ? 26 : 16, y: 6)
             .brightness(hovering ? 0.06 : 0)
@@ -564,5 +572,49 @@ struct BottomFade: View {
                        startPoint: .top, endPoint: .bottom)
             .frame(height: height)
             .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Biểu tượng thật của ứng dụng
+
+/// Tra biểu tượng của một ứng dụng theo bundle id, có nhớ lại để khỏi hỏi
+/// LaunchServices mỗi lần SwiftUI dựng lại view.
+enum AppIconProvider {
+    private static var cache: [String: NSImage] = [:]
+    private static let lock = NSLock()
+
+    static func icon(forBundleID id: String) -> NSImage? {
+        lock.lock()
+        if let cached = cache[id] { lock.unlock(); return cached }
+        lock.unlock()
+
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else {
+            return nil
+        }
+        let image = NSWorkspace.shared.icon(forFile: url.path)
+        lock.lock(); cache[id] = image; lock.unlock()
+        return image
+    }
+}
+
+/// Biểu tượng ứng dụng dùng làm hoạ tiết chìm trên thẻ; không có thì lùi về ký hiệu hệ thống.
+struct GroupGlyph: View {
+    var bundleID: String?
+    var fallback: String
+    var size: CGFloat
+    var opacity: Double
+
+    var body: some View {
+        if let bundleID, let icon = AppIconProvider.icon(forBundleID: bundleID) {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: size, height: size)
+                .opacity(opacity + 0.16)   // ảnh màu cần đậm hơn ký hiệu đơn sắc mới thấy rõ
+        } else {
+            Image(systemName: fallback)
+                .font(.system(size: size * 0.9, weight: .medium))
+                .foregroundStyle(Color.white.opacity(opacity))
+        }
     }
 }
