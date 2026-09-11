@@ -136,6 +136,12 @@ struct SmartScanScanner: ModuleScanner {
         // Thẻ nào nhiều dung lượng nhất lên trước, để hàng đầu luôn là thứ đáng nhìn nhất.
         result.sort { $0.totalSize > $1.totalSize }
 
+        // Trừ hai thẻ này: đổi chỗ cho nhau theo ý người dùng.
+        if let a = result.firstIndex(where: { $0.id == "logs" }),
+           let b = result.firstIndex(where: { $0.id == "misc" }) {
+            result.swapAt(a, b)
+        }
+
         stage.done()
         // Nhóm rỗng thì bỏ, trừ khi nó rỗng chỉ vì macOS chặn đọc — cái đó phải cho người dùng thấy.
         return result.filter { !$0.items.isEmpty || $0.needsFullDiskAccess }
