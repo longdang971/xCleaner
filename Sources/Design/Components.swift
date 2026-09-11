@@ -445,9 +445,9 @@ struct SearchField: View {
                 }.buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 28)
-        .background(Capsule().fill(Color.white.opacity(0.14)))
+        .padding(.horizontal, 12)
+        .frame(height: 30)
+        .background(Capsule().fill(Color.white.opacity(0.13)))
         .overlay(Capsule().strokeBorder(Color.white.opacity(focused ? 0.55 : 0.14),
                                         lineWidth: focused ? 1.4 : 1))
         .animation(Motion.gentle, value: focused)
@@ -467,10 +467,11 @@ struct FilterChip: View {
             Text(title)
                 .font(.system(size: 11.5, weight: isOn ? .semibold : .regular))
                 .foregroundStyle(isOn ? Color.black.opacity(0.85) : Color.white)
-                .padding(.horizontal, 13)
-                .frame(height: 26)
+                .padding(.horizontal, 14)
+                .frame(height: 30)
                 .background(Capsule().fill(isOn ? Color.white.opacity(0.92)
-                                                : Color.white.opacity(hovering ? 0.22 : 0.13)))
+                                                : Color.white.opacity(hovering ? 0.2 : 0.13)))
+                .overlay(Capsule().strokeBorder(Color.white.opacity(isOn ? 0 : 0.16), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .onHover { h in withAnimation(Motion.gentle) { hovering = h } }

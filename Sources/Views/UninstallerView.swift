@@ -45,41 +45,63 @@ struct UninstallerView: View {
 
     private var toolbar: some View {
         HStack(spacing: 10) {
-            SearchField(placeholder: "Tìm ứng dụng", text: $store.search).frame(width: 210)
+            SearchField(placeholder: "Tìm ứng dụng", text: $store.search)
+                .frame(width: 236)
 
-            Menu {
-                ForEach(UninstallStore.Sort.allCases) { s in
-                    Button(s.rawValue) { store.sort = s }
-                }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "arrow.up.arrow.down").font(.system(size: 10, weight: .semibold))
-                    Text(store.sort.rawValue).font(.system(size: 12, weight: .medium))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12).frame(height: 28)
-                .background(Capsule().fill(Color.white.opacity(0.14)))
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
+            sortButton
 
             FilterChip(title: "App hệ thống", isOn: store.showSystemApps) {
                 withAnimation(Motion.snappy) { store.showSystemApps.toggle() }
             }
 
-            Spacer()
+            Spacer(minLength: 12)
 
             if store.isLoading {
                 ProgressView().controlSize(.small).tint(.white)
-                Text(store.statusText).font(.system(size: 11)).foregroundStyle(Palette.textFaint)
-                    .lineLimit(1).frame(maxWidth: 220, alignment: .leading)
+                Text(store.statusText)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Palette.textFaint)
+                    .lineLimit(1)
+                    .frame(maxWidth: 240, alignment: .leading)
             } else {
                 Text("\(store.filteredApps.count) ứng dụng")
-                    .font(.system(size: 11)).foregroundStyle(Palette.textFaint)
-                PillButton(title: "Làm mới", systemImage: "arrow.clockwise") { store.load() }
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Palette.textFaint)
+
+                IconToolbar(actions: [
+                    .init(icon: "arrow.clockwise", help: "Đọc lại danh sách ứng dụng") {
+                        store.load()
+                    }
+                ])
             }
         }
+        .frame(height: 30)
+    }
+
+    /// Nút sắp xếp xoay vòng qua ba tiêu chí. `Menu` của SwiftUI không nhận chiều cao mình
+    /// đặt và còn nuốt luôn mũi tên trong nhãn, nên nó thấp hơn hẳn các nút bên cạnh.
+    private var sortButton: some View {
+        Button {
+            let all = UninstallStore.Sort.allCases
+            let next = (all.firstIndex(of: store.sort).map { $0 + 1 } ?? 0) % all.count
+            withAnimation(Motion.snappy) { store.sort = all[next] }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 10.5, weight: .semibold))
+                Text(store.sort.rawValue)
+                    .font(.system(size: 12, weight: .medium))
+                    .contentTransition(.opacity)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 13)
+            .frame(height: 30)
+            .background(Capsule().fill(Color.white.opacity(0.13)))
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("Đổi cách sắp xếp")
     }
 
     private var appList: some View {

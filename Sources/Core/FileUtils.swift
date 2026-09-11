@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CoreServices
 
 enum FileUtils {
     static let fm = FileManager.default
@@ -92,9 +93,21 @@ enum FileUtils {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 
+    /// Lần cuối người dùng thật sự mở thứ này.
+    ///
+    /// Không dùng `contentAccessDate` (atime): với một bundle `.app` nó đổi khi Spotlight hay
+    /// bản sao lưu quét qua, chứ không phải khi người dùng chạy app — đo trên máy thật thì
+    /// AppCleaner báo năm 2023 trong khi thực tế vừa mở tuần trước. Thứ đúng là
+    /// `kMDItemLastUsedDate` của Spotlight, chính là con số Finder hiển thị ở cột "Lần mở cuối".
     static func lastUsedDate(of url: URL) -> Date? {
-        let v = try? url.resourceValues(forKeys: [.contentAccessDateKey, .contentModificationDateKey])
-        return v?.contentAccessDate ?? v?.contentModificationDate
+        if let item = MDItemCreate(nil, url.path as CFString),
+           let used = MDItemCopyAttribute(item, kMDItemLastUsedDate) as? Date {
+            return used
+        }
+        // Spotlight bị tắt cho ổ đĩa này thì đành quay về ngày sửa đổi.
+        let v = try? url.resourceValues(forKeys: [.contentModificationDateKey,
+                                                  .contentAccessDateKey])
+        return v?.contentModificationDate ?? v?.contentAccessDate
     }
 
     static var home: URL { URL(fileURLWithPath: NSHomeDirectory()) }
