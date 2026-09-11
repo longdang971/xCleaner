@@ -529,23 +529,13 @@ struct PartCard: View {
             Divider().overlay(Color.white.opacity(0.16))
             body_
         }
-        .background {
-            ZStack(alignment: .topTrailing) {
-                gem[1].opacity(0.5)
-                RadialGradient(colors: [gem[0].opacity(0.34), .clear],
-                               center: UnitPoint(x: 0.95, y: 0),
-                               startRadius: 0, endRadius: 460)
-                LinearGradient(colors: [.clear, .black.opacity(0.22)],
-                               startPoint: .top, endPoint: .bottom)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+        // Không tô màu riêng: thẻ để lộ đúng nền cửa sổ, chỉ còn đường viền và một lớp
+        // sáng rất nhẹ ở đầu thẻ để tách phần tiêu đề khỏi danh sách.
         .overlay(
             RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
-        .shadow(color: .black.opacity(0.24), radius: 16, y: 7)
     }
 
     private var header: some View {
@@ -584,7 +574,8 @@ struct PartCard: View {
                 .contentTransition(.numericText())
         }
         .padding(.horizontal, 16)
-        .frame(height: 52)
+        .frame(height: 54)
+        .background(Color.white.opacity(0.07))
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggleAll)
     }
