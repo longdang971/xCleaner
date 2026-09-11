@@ -68,8 +68,9 @@ struct SidebarView: View {
             guard selection != m else { return }
             withAnimation(Motion.standard) { selection = m }
         } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: expanded ? 14 : 0) {
                 SidebarGlyph(icon: m.icon, colors: skin.gem, dimmed: !isSelected && hovered != m)
+                    .frame(maxWidth: expanded ? nil : .infinity)
 
                 if expanded {
                     Text(m.title)
@@ -80,9 +81,9 @@ struct SidebarView: View {
                         .transition(.opacity)
                 }
 
-                Spacer(minLength: 0)
+                if expanded { Spacer(minLength: 0) }
             }
-            .padding(.horizontal, expanded ? 16 : 10)
+            .padding(.horizontal, expanded ? 16 : 8)
             .frame(height: 52)
             .background {
                 if isSelected {
@@ -116,15 +117,16 @@ struct SidebarView: View {
                     .font(.system(size: 14))
                     .foregroundStyle(Color.white.opacity(0.75))
                     .frame(width: 32)
+                    .frame(maxWidth: expanded ? nil : .infinity)
                 if expanded {
                     Text("Tuỳ chọn")
                         .font(.system(size: 13.5))
                         .foregroundStyle(Color.white.opacity(0.75))
                         .fixedSize().transition(.opacity)
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, expanded ? 16 : 10)
+            .padding(.horizontal, expanded ? 16 : 8)
             .frame(height: 38)
             .contentShape(Rectangle())
         }

@@ -67,8 +67,7 @@ struct ProgressTile: View {
             }
         }
         .padding(16)
-        .frame(height: 168, alignment: .topLeading)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tileSurface(gem: gem, icon: stage.icon, bundleID: stage.appBundleID,
                      highlighted: isRunning, dimmed: isPending)
     }
@@ -121,16 +120,46 @@ struct ProgressGrid: View {
     var doneCaption: String = "để dọn"
     var runningTitle: String = "Đang tìm…"
 
+    private let spacing: CGFloat = 14
+
+    /// Hai hàng như lưới kết quả; hàng trên nhiều hơn một thẻ khi số thẻ lẻ.
+    private var rows: [[Int]] {
+        let n = stages.count
+        guard n > 3 else { return [Array(0..<n)] }
+        let top = Int(ceil(Double(n) / 2))
+        return [Array(0..<top), Array(top..<n)]
+    }
+
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14),
-                                 count: min(3, max(1, stages.count))),
-                  spacing: 14) {
-            ForEach(Array(stages.enumerated()), id: \.element.id) { idx, st in
-                tile(st, idx)
+        GeometryReader { geo in
+            let rowCount = rows.count
+            let availableH = geo.size.height - spacing * CGFloat(rowCount - 1)
+
+            VStack(spacing: spacing) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    let hasActive = activeIndex.map(row.contains) ?? false
+                    // Hàng đang có thẻ chạy thì cao lên, hàng kia nhường chỗ.
+                    let h = rowCount == 1
+                        ? availableH
+                        : (activeIndex == nil ? availableH / 2
+                                              : availableH * (hasActive ? 0.60 : 0.40))
+                    let availableW = geo.size.width - spacing * CGFloat(row.count - 1)
+                    let weights = row.map { $0 == activeIndex ? 2.0 : 1.0 }
+                    let totalWeight = weights.reduce(0, +)
+
+                    HStack(spacing: spacing) {
+                        ForEach(Array(row.enumerated()), id: \.element) { pos, idx in
+                            tile(stages[idx], idx)
+                                .frame(width: availableW * weights[pos] / totalWeight, height: h)
+                        }
+                    }
+                    .frame(height: h)
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+            .animation(Motion.standard, value: activeIndex)
+            .animation(Motion.standard, value: stageBytes.count)
         }
-        .animation(Motion.standard, value: activeIndex)
-        .animation(Motion.standard, value: stageBytes.count)
     }
 
     private func tile(_ stage: ScanStage, _ index: Int) -> some View {
@@ -164,14 +193,12 @@ struct ScanningView: View {
         VStack(spacing: 0) {
             header.padding(.bottom, 22)
 
-            ScrollView(showsIndicators: false) {
-                ProgressGrid(stages: stages,
-                             activeIndex: currentStage,
-                             stageBytes: stageBytes,
-                             detail: currentFile)
-                    .padding(.horizontal, Metrics.contentPadding)
-                    .padding(.bottom, 20)
-            }
+            ProgressGrid(stages: stages,
+                         activeIndex: currentStage,
+                         stageBytes: stageBytes,
+                         detail: currentFile)
+                .padding(.horizontal, Metrics.contentPadding)
+                .padding(.bottom, 18)
 
             CircleActionButton(title: "Dừng", accent: skin.action, action: onStop)
                 .padding(.bottom, 22)
@@ -223,16 +250,14 @@ struct CleaningView: View {
         VStack(spacing: 0) {
             header.padding(.bottom, 22)
 
-            ScrollView(showsIndicators: false) {
-                ProgressGrid(stages: stages,
-                             activeIndex: currentStage,
-                             stageBytes: stageBytes,
-                             detail: entries.last?.name ?? "",
-                             doneCaption: "đã dọn",
-                             runningTitle: "Đang dọn…")
-                    .padding(.horizontal, Metrics.contentPadding)
-                    .padding(.bottom, 20)
-            }
+            ProgressGrid(stages: stages,
+                         activeIndex: currentStage,
+                         stageBytes: stageBytes,
+                         detail: entries.last?.name ?? "",
+                         doneCaption: "đã dọn",
+                         runningTitle: "Đang dọn…")
+                .padding(.horizontal, Metrics.contentPadding)
+                .padding(.bottom, 18)
 
             CircleActionButton(title: "Dừng", accent: skin.action, action: onStop)
                 .padding(.bottom, 22)
