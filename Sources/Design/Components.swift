@@ -243,9 +243,9 @@ struct CircleActionButton: View {
             // sẽ kéo cả ZStack giãn ra theo nó, và nút phình to gấp đôi.
             .background(
                 Circle()
-                    .fill(RadialGradient(colors: [.black.opacity(0.45), .clear],
-                                         center: .center, startRadius: 34, endRadius: 104))
-                    .frame(width: 220, height: 220)
+                    .fill(RadialGradient(colors: [.black.opacity(0.42), .clear],
+                                         center: .center, startRadius: 36, endRadius: 66))
+                    .frame(width: 140, height: 140)
             )
             .shadow(color: accent.opacity(hovering ? 0.85 : 0.55),
                     radius: hovering ? 26 : 16, y: 6)
