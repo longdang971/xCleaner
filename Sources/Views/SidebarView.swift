@@ -24,13 +24,10 @@ struct SidebarView: View {
             // Chừa chỗ cho ba nút hệ thống
             Spacer().frame(height: Metrics.titleBarHeight + 26)
 
+            // Một cụm liền: khoảng cách giữa Quét thông minh và ba mục dưới bằng đúng
+            // khoảng cách giữa chúng với nhau.
             VStack(spacing: 4) {
                 ForEach(cleaning) { row($0) }
-            }
-
-            Spacer().frame(height: 26)
-
-            VStack(spacing: 4) {
                 ForEach(tools) { row($0) }
             }
 

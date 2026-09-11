@@ -240,8 +240,11 @@ struct CircleActionButton: View {
                     Circle().strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5)
                 }
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 19, weight: .bold))
                     .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 8)
                     .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
             }
             .frame(width: 84, height: 84)
