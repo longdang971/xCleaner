@@ -69,7 +69,8 @@ struct SidebarView: View {
             withAnimation(Motion.standard) { selection = m }
         } label: {
             HStack(spacing: expanded ? 14 : 0) {
-                SidebarGlyph(icon: m.icon, colors: skin.gem, dimmed: !isSelected && hovered != m)
+                SidebarGlyph(icon: m.icon, colors: skin.gem,
+                             active: isSelected, hovering: hovered == m)
                     .frame(maxWidth: expanded ? nil : .infinity)
 
                 if expanded {
@@ -135,30 +136,34 @@ struct SidebarView: View {
     }
 }
 
-/// Khối biểu tượng nhỏ trong sidebar — cùng ngôn ngữ với các khối 3D lớn, thu về cỡ 32pt.
+/// Biểu tượng trong sidebar: bình thường chỉ là ký hiệu trơn, mục đang chọn mới được đặt
+/// vào khối màu — màu ở sidebar nên dành riêng cho chỗ người dùng đang đứng.
 struct SidebarGlyph: View {
     let icon: String
     let colors: [Color]
-    var dimmed: Bool = false
+    var active: Bool = false
+    var hovering: Bool = false
 
     var body: some View {
         ZStack {
-            Squircle()
-                .fill(LinearGradient(colors: [colors[0], colors[1]],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-            Squircle()
-                .fill(LinearGradient(colors: [.white.opacity(0.45), .clear],
-                                     startPoint: .top, endPoint: .center))
-            Squircle()
-                .strokeBorder(Color.white.opacity(0.45), lineWidth: 0.8)
+            if active {
+                Squircle()
+                    .fill(LinearGradient(colors: [colors[0], colors[1]],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                Squircle()
+                    .fill(LinearGradient(colors: [.white.opacity(0.45), .clear],
+                                         startPoint: .top, endPoint: .center))
+                Squircle()
+                    .strokeBorder(Color.white.opacity(0.45), lineWidth: 0.8)
+            }
+
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
-                .shadow(color: colors[2].opacity(0.7), radius: 2, y: 1)
+                .font(.system(size: active ? 13 : 15, weight: active ? .semibold : .medium))
+                .foregroundStyle(active ? .white : Color.white.opacity(hovering ? 0.95 : 0.7))
+                .shadow(color: active ? colors[2].opacity(0.7) : .clear, radius: 2, y: 1)
         }
         .frame(width: 32, height: 32)
-        .shadow(color: colors[1].opacity(dimmed ? 0.18 : 0.45), radius: 6, y: 2)
-        .saturation(dimmed ? 0.65 : 1)
-        .opacity(dimmed ? 0.82 : 1)
+        .shadow(color: active ? colors[1].opacity(0.45) : .clear, radius: 6, y: 2)
+        .animation(Motion.gentle, value: active)
     }
 }
