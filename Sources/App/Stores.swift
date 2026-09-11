@@ -10,6 +10,7 @@ final class AppSettings: ObservableObject {
     @AppStorage("largeMinMB")       var largeMinMB: Int = 50
     @AppStorage("duplicateMinMB")   var duplicateMinMB: Int = 1
     @AppStorage("confirmBeforeClean") var confirmBeforeClean: Bool = true
+    @AppStorage("rememberChoices")   var rememberChoices: Bool = true
     @AppStorage("hasSeenWelcome")   var hasSeenWelcome: Bool = false
 }
 
@@ -47,6 +48,8 @@ final class ScanStore: ObservableObject {
     @Published var liveBytes: Int64 = 0
     @Published var outcome: CleanOutcome?
     @Published var lastError: String?
+    /// Số mục được đặt lại theo lựa chọn lần trước của người dùng.
+    @Published var restoredCount: Int = 0
 
     private let cancelToken = CancelToken()
     private let throttle = ProgressThrottle()
@@ -100,8 +103,10 @@ final class ScanStore: ObservableObject {
             }
             DispatchQueue.main.async {
                 guard let self else { return }
-                let g = result
+                var g = result
+                let restored = SelectionMemory.shared.apply(to: &g)
                 withAnimation(Motion.standard) {
+                    self.restoredCount = restored
                     self.groups = g
                     self.liveBytes = g.reduce(0) { $0 + $1.totalSize }
                     self.phase = token.isCancelled && g.isEmpty ? .idle : .results
@@ -133,12 +138,14 @@ final class ScanStore: ObservableObject {
         guard let gi = groups.firstIndex(where: { $0.id == groupID }),
               let ii = groups[gi].items.firstIndex(where: { $0.id == itemID }) else { return }
         groups[gi].items[ii].isSelected.toggle()
+        SelectionMemory.shared.record(groups[gi].items[ii])
     }
 
     func toggleGroup(_ groupID: String) {
         guard let gi = groups.firstIndex(where: { $0.id == groupID }) else { return }
         let turnOn = groups[gi].selection != .all
         for i in groups[gi].items.indices { groups[gi].items[i].isSelected = turnOn }
+        SelectionMemory.shared.record(groups[gi].items)
     }
 
     /// Bật/tắt cả một phần trong nhóm (ví dụ toàn bộ "Cookie & đăng nhập").
@@ -148,6 +155,7 @@ final class ScanStore: ObservableObject {
         for i in groups[gi].items.indices where groups[gi].items[i].category == category {
             groups[gi].items[i].isSelected = turnOn
         }
+        SelectionMemory.shared.record(groups[gi].items.filter { $0.category == category })
     }
 
     func toggleExpanded(_ groupID: String) {
@@ -179,6 +187,7 @@ final class ScanStore: ObservableObject {
         for gi in groups.indices {
             for ii in groups[gi].items.indices { groups[gi].items[ii].isSelected = on }
         }
+        SelectionMemory.shared.record(groups.flatMap(\.items))
     }
 
     // MARK: Dọn

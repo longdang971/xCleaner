@@ -3,6 +3,7 @@ import AppKit
 
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
+    @State private var rememberedCount = SelectionMemory.shared.count
 
     var body: some View {
         TabView {
@@ -24,6 +25,21 @@ struct SettingsView: View {
                 Toggle("Hỏi lại trước khi dọn", isOn: $settings.confirmBeforeClean)
             }
             Section {
+                Toggle("Ghi nhớ lựa chọn của tôi", isOn: $settings.rememberChoices)
+                Text("Những mục bạn tự tay bỏ chọn hoặc chọn thêm sẽ được giữ nguyên ở lần quét sau. Chỉ phần khác với đề xuất mặc định được ghi lại.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                HStack {
+                    Text("Đang nhớ \(rememberedCount) mục")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Quên hết") {
+                        SelectionMemory.shared.forgetAll()
+                        rememberedCount = 0
+                    }
+                    .disabled(rememberedCount == 0)
+                }
+            }
+            Section {
                 HStack {
                     Text("Quyền truy cập toàn bộ đĩa")
                     Spacer()
@@ -37,6 +53,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { rememberedCount = SelectionMemory.shared.count }
     }
 
     private var scanning: some View {

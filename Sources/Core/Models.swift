@@ -85,6 +85,8 @@ struct CleanItem: Identifiable, Hashable {
     var detail: String
     var size: Int64
     var isSelected: Bool
+    /// Trạng thái mà scanner đề xuất. So với `isSelected` để biết người dùng đã đổi ý ở đâu.
+    let defaultSelected: Bool
     var requiresAdmin: Bool
     var isDirectory: Bool
     /// Xoá nội dung bên trong nhưng giữ lại chính thư mục (dùng cho ~/Library/Caches/<bundle>).
@@ -111,11 +113,20 @@ struct CleanItem: Identifiable, Hashable {
         self.detail = detail
         self.size = size
         self.isSelected = isSelected
+        self.defaultSelected = isSelected
         self.requiresAdmin = requiresAdmin
         self.isDirectory = isDirectory
         self.emptyContentsOnly = emptyContentsOnly
         self.category = category
         self.safety = safety
+    }
+
+    /// Bản sao với đề xuất mặc định khác. Phải tạo mục mới chứ không sửa `isSelected`,
+    /// vì `defaultSelected` là cái mốc để biết người dùng có tự tay đổi ý hay không.
+    func reselected(_ value: Bool, name newName: String? = nil) -> CleanItem {
+        CleanItem(url: url, name: newName ?? name, detail: detail, size: size,
+                  isSelected: value, requiresAdmin: requiresAdmin, isDirectory: isDirectory,
+                  emptyContentsOnly: emptyContentsOnly, category: category, safety: safety)
     }
 
     static func == (lhs: CleanItem, rhs: CleanItem) -> Bool { lhs.id == rhs.id }

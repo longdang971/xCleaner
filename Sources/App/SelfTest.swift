@@ -18,6 +18,7 @@ enum SelfTest {
         testTrashMode()
         testEmptyContentsOnly()
         testSizeCalculation()
+        testSelectionMemory()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
     }
@@ -136,6 +137,54 @@ enum SelfTest {
         check("không báo lỗi", outcome.failures.isEmpty)
         check("thư mục vẫn còn", FileUtils.isDirectory(keep))
         check("ruột đã rỗng", FileUtils.children(of: keep).isEmpty)
+    }
+
+    // MARK: Nhớ lựa chọn
+
+    private static func testSelectionMemory() {
+        print("[SelectionMemory] nhớ đúng phần người dùng đã đổi")
+        let memory = SelectionMemory.shared
+        let saved = UserDefaults.standard.dictionary(forKey: "selectionOverrides")
+        memory.forgetAll()
+
+        let dir = makeSandbox()
+        let a = dir.appendingPathComponent("a.bin")   // mặc định chọn, người dùng bỏ
+        let b = dir.appendingPathComponent("b.bin")   // mặc định không chọn, người dùng chọn
+        let c = dir.appendingPathComponent("c.bin")   // không ai đụng tới
+        for u in [a, b, c] {
+            FileManager.default.createFile(atPath: u.path, contents: Data(repeating: 0x5A, count: 2048))
+        }
+
+        func freshGroups() -> [CleanGroup] {
+            [CleanGroup(id: "g", title: "Thử", subtitle: "", icon: "gear", safety: .safe,
+                        items: [CleanItem(url: a, size: 2048, isSelected: true),
+                                CleanItem(url: b, size: 2048, isSelected: false),
+                                CleanItem(url: c, size: 2048, isSelected: true)])]
+        }
+
+        var groups = freshGroups()
+        groups[0].items[0].isSelected = false
+        groups[0].items[1].isSelected = true
+        memory.record(groups[0].items)
+
+        var next = freshGroups()
+        let restored = memory.apply(to: &next)
+        check("khôi phục đúng 2 mục", restored == 2, "(được \(restored))")
+        check("mục bị bỏ chọn vẫn tắt", next[0].items[0].isSelected == false)
+        check("mục được chọn thêm vẫn bật", next[0].items[1].isSelected == true)
+        check("mục không đụng tới giữ nguyên đề xuất", next[0].items[2].isSelected == true)
+
+        // Quay về đúng đề xuất thì phải quên đi, không giữ rác vô hạn
+        var back = freshGroups()
+        _ = memory.apply(to: &back)
+        back[0].items[0].isSelected = true
+        back[0].items[1].isSelected = false
+        memory.record(back[0].items)
+        check("trở lại mặc định thì xoá khỏi bộ nhớ", memory.count == 0, "(còn \(memory.count))")
+
+        memory.forgetAll()
+        if let saved { UserDefaults.standard.set(saved, forKey: "selectionOverrides") }
+        try? FileManager.default.removeItem(at: sandbox)
     }
 
     private static func testSizeCalculation() {

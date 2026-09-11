@@ -1,9 +1,11 @@
 import Foundation
 
-/// "Quét thông minh": chỉ gom những thứ dọn được mà không phải suy nghĩ.
+/// "Quét thông minh": nhìn khắp nơi như các mục chuyên biệt, nhưng **chỉ chọn sẵn**
+/// những gì dọn được mà không phải suy nghĩ.
 ///
-/// Lấy toàn bộ rác hệ thống, Thùng rác, và **chỉ riêng bộ nhớ đệm** của trình duyệt —
-/// cookie, lịch sử hay phiên đăng nhập không bao giờ nằm trong đây.
+/// Trình duyệt được quét sâu đúng bằng mục Riêng tư — đủ cả lịch sử, cookie, tự động điền,
+/// thẻ và phiên — nhưng mặc định chỉ tick phần bộ nhớ đệm. Bấm "Xem" là thấy hết và tự
+/// tick thêm nếu muốn; không bấm gì thì nút "Dọn" vẫn tuyệt đối an toàn.
 struct SmartScanScanner: ModuleScanner {
 
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
@@ -18,35 +20,34 @@ struct SmartScanScanner: ModuleScanner {
             }
         }
 
-        let junk = SystemJunkScanner().scan(cancel: cancel, progress: forward(0, 0.55))
+        let junk = SystemJunkScanner().scan(cancel: cancel, progress: forward(0, 0.5))
             .filter { $0.safety == .safe }
         all += junk
         bytes += junk.reduce(0) { $0 + $1.totalSize }
         if cancel.isCancelled { return all }
 
-        let trash = TrashDownloadsScanner().scan(cancel: cancel, progress: forward(0.55, 0.25))
+        let trash = TrashDownloadsScanner().scan(cancel: cancel, progress: forward(0.5, 0.2))
             .filter { $0.id == "trash" }
         all += trash
         bytes += trash.reduce(0) { $0 + $1.totalSize }
         if cancel.isCancelled { return all }
 
-        // Chỉ giữ các mục bộ nhớ đệm của trình duyệt.
-        let browsers = BrowserPrivacyScanner().scan(cancel: cancel, progress: forward(0.8, 0.2))
-        var cacheItems: [CleanItem] = []
-        for g in browsers {
-            for var item in g.items where item.category == BrowserPrivacyScanner.Part.cache {
-                item.name = "\(g.title) · \(item.name)"
-                item.isSelected = true
-                cacheItems.append(item)
+        // Trình duyệt: giữ nguyên chiều sâu của mục Riêng tư, chỉ đổi phần được tick sẵn.
+        let browsers = BrowserPrivacyScanner().scan(cancel: cancel, progress: forward(0.7, 0.3))
+        for var g in browsers {
+            g.items = g.items.map { item in
+                let safeByDefault = item.category == BrowserPrivacyScanner.Part.cache
+                return item.isSelected == safeByDefault ? item : item.reselected(safeByDefault)
             }
-        }
-        if !cacheItems.isEmpty {
-            cacheItems.sort { $0.size > $1.size }
-            bytes += cacheItems.reduce(0) { $0 + $1.size }
-            all.append(CleanGroup(id: "smart-browser-cache",
-                                  title: "Bộ nhớ đệm trình duyệt",
-                                  subtitle: "Không đụng tới cookie, lịch sử hay phiên đăng nhập",
-                                  icon: "globe", safety: .safe, items: cacheItems))
+            let cacheSize = g.items
+                .filter { $0.category == BrowserPrivacyScanner.Part.cache }
+                .reduce(0) { $0 + $1.size }
+            g.subtitle = g.needsFullDiskAccess
+                ? "Danh sách chưa đầy đủ — macOS đang chặn đọc thư mục này"
+                : "Tick sẵn \(Fmt.size(cacheSize)) bộ nhớ đệm · bấm Xem để chọn thêm"
+            g.safety = .safe   // phần được tick sẵn là an toàn; phần còn lại do người dùng quyết
+            bytes += g.totalSize
+            all.append(g)
         }
 
         progress(ScanProgress(fraction: 1, message: "Xong", bytesFound: bytes))

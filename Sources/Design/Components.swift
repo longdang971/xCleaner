@@ -292,28 +292,43 @@ struct PillButton: View {
 
 // MARK: - Ô chọn
 
+/// Ô chọn riêng của xCleaner: hình tròn cho hợp với nút tròn và các khối squircle của app,
+/// tô trắng đặc khi đã chọn nên nổi rõ trên mọi màu thẻ.
 struct TriStateBox: View {
     var state: CleanGroup.Selection
     var action: () -> Void
 
+    var size: CGFloat = 18
+    @State private var hovering = false
+
+    private var isOn: Bool { state != .none }
+
     var body: some View {
         Button(action: action) {
             ZStack {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(state == .none ? Color.white.opacity(0.10) : Color.white)
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .strokeBorder(Color.white.opacity(state == .none ? 0.45 : 0), lineWidth: 1.3)
-                if state != .none {
+                // Vòng ngoài: luôn có mặt, đậm dần khi rê chuột vào
+                Circle()
+                    .fill(Color.white.opacity(isOn ? 1 : (hovering ? 0.18 : 0.10)))
+
+                Circle()
+                    .strokeBorder(Color.white.opacity(isOn ? 0 : (hovering ? 0.9 : 0.55)),
+                                  lineWidth: 1.5)
+
+                if isOn {
                     Image(systemName: state == .all ? "checkmark" : "minus")
-                        .font(.system(size: 9, weight: .black))
-                        .foregroundStyle(.black.opacity(0.82))
+                        .font(.system(size: size * 0.5, weight: .black))
+                        .foregroundStyle(.black.opacity(0.78))
+                        .transition(.opacity)
                 }
             }
-            .frame(width: 16, height: 16)
-            .contentShape(Rectangle())
+            .frame(width: size, height: size)
+            .shadow(color: .white.opacity(isOn ? 0.35 : 0), radius: hovering ? 6 : 4)
+            .contentShape(Circle())
             .animation(Motion.snappy, value: state)
+            .animation(Motion.gentle, value: hovering)
         }
         .buttonStyle(.plain)
+        .onHover { h in hovering = h }
     }
 }
 
@@ -543,7 +558,9 @@ struct MiniRing: View {
 struct BottomFade: View {
     var height: CGFloat = 96
     var body: some View {
-        LinearGradient(colors: [.clear, .black.opacity(0.35)],
+        LinearGradient(stops: [.init(color: .clear, location: 0),
+                               .init(color: .black.opacity(0.30), location: 0.45),
+                               .init(color: .black.opacity(0.62), location: 1)],
                        startPoint: .top, endPoint: .bottom)
             .frame(height: height)
             .allowsHitTesting(false)

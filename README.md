@@ -26,7 +26,7 @@ Học theo CleanMyMac 5 nhưng dựng lại hoàn toàn bằng SwiftUI, không d
 
 | Mục | Việc nó làm |
 |---|---|
-| Quét thông minh | Gom rác hệ thống + Thùng rác + bộ nhớ đệm trình duyệt, tất cả đều an toàn để xoá |
+| Quét thông minh | Quét sâu đúng như các mục chuyên biệt, nhưng chỉ tick sẵn những gì an toàn tuyệt đối |
 | Rác hệ thống | Bộ nhớ đệm, nhật ký, báo cáo sự cố của người dùng và của `/Library`, rác công cụ lập trình |
 | Thùng rác & Tải về | Thùng rác mọi ổ đĩa, bộ cài cũ, tệp tải lâu ngày, đính kèm thư, ảnh chụp màn hình |
 | Riêng tư | Quét sâu từng trình duyệt (Safari, Chrome, Edge, Brave, Firefox, Arc, Opera, Vivaldi, Zen), chia thành 7 phần chọn riêng được |
@@ -96,6 +96,13 @@ iconutil -c icns /tmp/xCleaner.iconset -o Resources/AppIcon.icns
   mục này không làm mục khác dựng lại. Danh sách dùng `LazyVStack` và cắt ở 120 dòng mỗi nhóm.
 - **Màu**: `Color.adaptive(light, dark)` dựng `NSColor` động, một khai báo dùng cho cả hai chế độ sáng/tối.
 - **Tệp cá nhân** (Tệp lớn & cũ, Tệp trùng lặp) luôn vào Thùng rác, không xoá thẳng.
+- **Nhớ lựa chọn** (`SelectionMemory`): chỉ ghi lại **phần khác với mặc định**, khoá là đường dẫn
+  rút gọn `~`. Nhờ vậy khi một bản sau đổi đề xuất mặc định, những mục người dùng chưa từng đụng
+  tới sẽ đi theo đề xuất mới thay vì mắc kẹt ở lựa chọn cũ. Quay về đúng mặc định thì mục đó
+  được xoá khỏi bộ nhớ, không tích rác vô hạn. Tắt hoặc xoá sạch trong Tuỳ chọn.
+- **Quét thông minh** dùng chung bộ quét trình duyệt với mục Riêng tư, chỉ khác ở chỗ tick sẵn
+  mỗi phần bộ nhớ đệm. Muốn đổi thì phải tạo `CleanItem` mới qua `reselected(_:)` chứ không sửa
+  `isSelected`, vì `defaultSelected` chính là cái mốc để biết người dùng có tự tay đổi ý hay không.
 - **Firefox**: không bao giờ xoá `places.sqlite` vì tệp đó chứa cả lịch sử lẫn dấu trang.
 - **Chromium**: `History` an toàn để xoá, dấu trang nằm ở tệp `Bookmarks` riêng.
 
