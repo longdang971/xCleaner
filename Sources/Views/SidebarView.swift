@@ -81,25 +81,25 @@ struct SidebarView: View {
 
                 if expanded { Spacer(minLength: 0) }
             }
-            .padding(.horizontal, expanded ? 16 : 8)
-            .frame(height: 52)
+            .padding(.horizontal, expanded ? 16 : 6)
+            .frame(height: 46)
             .background {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
                         .fill(Color.white.opacity(0.13))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
                                 .strokeBorder(Color.white.opacity(0.26), lineWidth: 1)
                         )
                 } else if hovered == m {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
                         .fill(Color.white.opacity(0.07))
                 }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, expanded ? 12 : 8)
+        .padding(.horizontal, expanded ? 12 : 14)
         .help(expanded ? "" : m.title)
         .onHover { h in
             withAnimation(Motion.gentle) { hovered = h ? m : (hovered == m ? nil : hovered) }
