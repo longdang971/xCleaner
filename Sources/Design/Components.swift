@@ -234,7 +234,11 @@ struct CircleActionButton: View {
                     .fill(RadialGradient(colors: [.black.opacity(0.22), .clear],
                                          center: UnitPoint(x: 0.5, y: 1.1),
                                          startRadius: 0, endRadius: 60))
-                Circle().strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5)
+                // Khi có vòng tiến trình thì chính nó làm viền; hai vòng trắng lồng nhau
+                // nhìn như một lỗi vẽ.
+                if progress == nil {
+                    Circle().strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5)
+                }
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
@@ -245,14 +249,14 @@ struct CircleActionButton: View {
                 if let progress {
                     ZStack {
                         Circle()
-                            .stroke(Color.white.opacity(0.22), lineWidth: 3)
+                            .stroke(Color.white.opacity(0.26), lineWidth: 4.5)
                         Circle()
                             .trim(from: 0, to: max(0.004, min(1, progress)))
-                            .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                            .stroke(Color.white, style: StrokeStyle(lineWidth: 4.5, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                             .animation(Motion.standard, value: progress)
                     }
-                    .frame(width: 100, height: 100)
+                    .frame(width: 86, height: 86)
                 }
             }
             // Quầng tối đặt ở nền chứ không nằm trong ZStack: một con có kích thước cứng
