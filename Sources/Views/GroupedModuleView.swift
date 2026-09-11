@@ -355,14 +355,6 @@ struct GroupTile: View {
                 .padding(.top, 1)
 
             HStack(spacing: 6) {
-                // Chỉ một nhãn: nhồi nhiều nhãn vào hàng này là nút bị nén tới mức cắt mất chữ.
-                if group.needsFullDiskAccess {
-                    SafetyBadge(level: .sensitive)
-                } else if group.items.contains(where: \.requiresAdmin) {
-                    AdminBadge()
-                } else if group.safety != .safe {
-                    SafetyBadge(level: group.safety)
-                }
                 Spacer(minLength: 4)
                 if group.needsFullDiskAccess {
                     PillButton(title: "Cấp quyền", kind: .warning, action: openFullDiskAccess)
@@ -588,8 +580,6 @@ struct PartCard: View {
                 .foregroundStyle(.white)
                 .lineLimit(1)
 
-            if worstSafety != .safe { SafetyBadge(level: worstSafety) }
-            if items.contains(where: \.requiresAdmin) { AdminBadge() }
 
             Spacer(minLength: 6)
 

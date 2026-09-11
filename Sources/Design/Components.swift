@@ -369,31 +369,6 @@ struct CheckBox: View {
     var body: some View { TriStateBox(state: isOn ? .all : .none, action: action) }
 }
 
-// MARK: - Nhãn
-
-struct SafetyBadge: View {
-    var level: SafetyLevel
-    var body: some View {
-        Text(level.label)
-            .font(.system(size: 10, weight: .bold))
-            .foregroundStyle(.black.opacity(0.82))
-            .padding(.horizontal, 8).padding(.vertical, 2.5)
-            .background(Capsule().fill(Palette.safetyColor(level)))
-    }
-}
-
-struct AdminBadge: View {
-    var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "lock.fill").font(.system(size: 8, weight: .bold))
-            Text("Cần mật khẩu").font(.system(size: 10, weight: .bold))
-        }
-        .foregroundStyle(.black.opacity(0.82))
-        .padding(.horizontal, 8).padding(.vertical, 2.5)
-        .background(Capsule().fill(Palette.warning))
-    }
-}
-
 // MARK: - Thanh ổ đĩa (nằm dưới sidebar)
 
 struct DiskUsageRing: View {
