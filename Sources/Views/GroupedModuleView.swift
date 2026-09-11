@@ -137,33 +137,34 @@ struct GroupedModuleView: View {
                     .padding(.bottom, 6)
                 PillButton(title: "Dừng lại", systemImage: "stop.fill") { store.cancelScan() }
             } else {
-                GemView(symbol: module.icon, colors: skin.gem, size: 148)
-                    .padding(.bottom, 18)
-
-                HeroHeadline(title: module.title, subtitle: hint) {
-                    EmptyView()
-                }
-                .padding(.bottom, 26)
-
-                CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
+                ModuleIntro(title: module.title,
+                            subtitle: hint,
+                            icon: module.icon,
+                            gem: skin.gem,
+                            highlights: module.highlights)
             }
 
             Spacer()
-            Spacer().frame(height: 30)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottom) {
+            if store.phase != .scanning {
+                CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
+                    .padding(.bottom, 22)
+            }
+        }
     }
 
     private var hint: String {
         switch module {
         case .smartScan:
-            return "Bộ nhớ đệm, nhật ký, báo cáo sự cố và Thùng rác.\nMọi mục tìm thấy ở đây đều an toàn để xoá."
+            return "Dọn nhanh những thứ an toàn tuyệt đối. Mọi mục tick sẵn đều có thể xoá mà không mất gì."
         case .systemJunk:
             return "Gồm cả /Library — những mục đó sẽ cần mật khẩu quản trị khi dọn."
         case .privacy:
-            return "Cookie, lịch sử và bộ nhớ đệm của mọi trình duyệt trên máy.\nHãy thoát trình duyệt trước khi dọn."
+            return "Dấu vết duyệt web của mọi trình duyệt trên máy. Nhớ thoát trình duyệt trước khi dọn."
         case .trashDownloads:
-            return "Thùng rác trên mọi ổ đĩa, bộ cài cũ và tệp tải về lâu ngày.\nXem qua danh sách trước khi dọn."
+            return "Thùng rác, bộ cài cũ và tệp tải về lâu ngày. Xem qua danh sách trước khi dọn."
         default:
             return ""
         }

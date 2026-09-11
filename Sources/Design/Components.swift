@@ -783,3 +783,62 @@ extension View {
                              highlighted: highlighted, dimmed: dimmed))
     }
 }
+
+// MARK: - Màn khởi đầu của một mục
+
+/// Hai cột: khối 3D bên trái, bên phải là tên mục, một câu mô tả và ba việc nó sẽ làm.
+struct ModuleIntro: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let gem: [Color]
+    let highlights: [(icon: String, title: String)]
+
+    var body: some View {
+        HStack(spacing: 54) {
+            GemView(symbol: icon, colors: gem, size: 196)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title)
+                    .font(.system(size: 40, weight: .bold))
+                    .foregroundStyle(.white)
+
+                Text(subtitle)
+                    .font(.system(size: 15))
+                    .foregroundStyle(Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 360, alignment: .leading)
+                    .padding(.top, 8)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(Array(highlights.enumerated()), id: \.offset) { _, h in
+                        HStack(spacing: 13) {
+                            ZStack {
+                                Squircle()
+                                    .fill(LinearGradient(colors: [gem[0], gem[1]],
+                                                         startPoint: .topLeading,
+                                                         endPoint: .bottomTrailing))
+                                Squircle()
+                                    .fill(LinearGradient(colors: [.white.opacity(0.4), .clear],
+                                                         startPoint: .top, endPoint: .center))
+                                Image(systemName: h.icon)
+                                    .font(.system(size: 12.5, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            }
+                            .frame(width: 30, height: 30)
+                            .shadow(color: gem[1].opacity(0.45), radius: 6, y: 2)
+
+                            Text(h.title)
+                                .font(.system(size: 14.5, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+                .padding(.top, 26)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, Metrics.contentPadding)
+    }
+}

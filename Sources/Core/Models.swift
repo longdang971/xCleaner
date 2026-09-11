@@ -49,6 +49,40 @@ enum CleanModule: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Ba việc chính mà mục này làm, hiện ở màn khởi đầu.
+    var highlights: [(icon: String, title: String)] {
+        switch self {
+        case .smartScan:
+            return [("shippingbox.fill", "Bộ nhớ đệm & nhật ký"),
+                    ("trash.fill", "Thùng rác"),
+                    ("globe", "Bộ nhớ đệm trình duyệt")]
+        case .systemJunk:
+            return [("shippingbox.fill", "Bộ nhớ đệm ứng dụng & hệ thống"),
+                    ("doc.text.fill", "Nhật ký và báo cáo sự cố"),
+                    ("hammer.fill", "Rác của công cụ lập trình")]
+        case .trashDownloads:
+            return [("trash.fill", "Thùng rác trên mọi ổ đĩa"),
+                    ("opticaldiscdrive.fill", "Bộ cài đã dùng xong"),
+                    ("clock.arrow.circlepath", "Tệp tải về lâu ngày")]
+        case .privacy:
+            return [("clock.arrow.circlepath", "Lịch sử duyệt web"),
+                    ("person.badge.key.fill", "Cookie và phiên đăng nhập"),
+                    ("shippingbox.fill", "Bộ nhớ đệm trình duyệt")]
+        case .uninstaller:
+            return [("shippingbox", "Gỡ app cùng mọi tệp còn sót"),
+                    ("folder.fill", "Dữ liệu, tuỳ chọn, container"),
+                    ("bolt.horizontal.fill", "Tác vụ nền và biên nhận cài đặt")]
+        case .largeOld:
+            return [("chart.pie.fill", "Tệp chiếm nhiều chỗ nhất"),
+                    ("clock.fill", "Thứ lâu rồi không đụng tới"),
+                    ("folder.fill", "Quét thư mục bất kỳ")]
+        case .duplicates:
+            return [("square.on.square", "So khớp từng byte"),
+                    ("wand.and.stars", "Tự chọn bản cần xoá"),
+                    ("checkmark.shield.fill", "Luôn giữ lại một bản")]
+        }
+    }
+
     /// Các module dùng chung màn hình kết quả dạng nhóm.
     var usesGroupedResults: Bool {
         switch self {
