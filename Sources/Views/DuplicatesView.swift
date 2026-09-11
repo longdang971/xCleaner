@@ -67,15 +67,19 @@ struct DuplicatesView: View {
     private var startScreen: some View {
         VStack(spacing: 0) {
             Spacer()
-            GemView(symbol: "square.on.square", colors: skin.gem, size: 142).padding(.bottom, 18)
-            HeroHeadline(title: "Tệp trùng lặp",
-                         subtitle: "So khớp nội dung từng byte, không dựa vào tên tệp.\nTìm trong Documents, Downloads, Desktop, Pictures và Movies.") {
+            ModuleIntro(title: CleanModule.duplicates.title,
+                        subtitle: "So khớp nội dung từng byte, không dựa vào tên tệp. Tìm trong Documents, Downloads, Desktop, Pictures và Movies.",
+                        icon: CleanModule.duplicates.icon,
+                        gem: skin.gem,
+                        highlights: CleanModule.duplicates.highlights) {
                 PillButton(title: "Chọn thư mục khác…", systemImage: "folder") { pickRoots() }
             }
-            .padding(.bottom, 26)
-            CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
             Spacer()
-            Spacer().frame(height: 30)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottom) {
+            CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
+                .padding(.bottom, 22)
         }
     }
 

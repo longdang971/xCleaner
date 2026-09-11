@@ -454,6 +454,18 @@ final class UninstallStore: ObservableObject {
         }
     }
 
+    func backToStart() {
+        cancelToken.cancel()
+        withAnimation(Motion.standard) {
+            apps = []
+            selectedApp = nil
+            leftovers = []
+            outcome = nil
+            search = ""
+            statusText = ""
+        }
+    }
+
     func select(_ app: UninstallScanner.InstalledApp) {
         selectedApp = app
         leftovers = []

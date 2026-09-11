@@ -9,19 +9,14 @@ struct UninstallerView: View {
     private let skin = ModuleSkin.skin(for: .uninstaller)
 
     var body: some View {
-        VStack(spacing: 0) {
-            toolbar
-                .padding(.horizontal, Metrics.contentPadding)
-                .padding(.bottom, 14)
-
-            HStack(spacing: 14) {
-                appList.frame(width: 320)
-                detail
+        Group {
+            if store.apps.isEmpty && !store.isLoading {
+                startScreen
+            } else {
+                browser
             }
-            .padding(.horizontal, Metrics.contentPadding)
-            .padding(.bottom, Metrics.contentPadding)
         }
-        .onAppear { if store.apps.isEmpty { store.load() } }
+        .animation(Motion.standard, value: store.apps.isEmpty)
         .confirmationDialog("Gỡ \(store.selectedApp?.name ?? "")?",
                             isPresented: $confirming, titleVisibility: .visible) {
             Button("Gỡ ứng dụng", role: .destructive) { store.uninstall() }
@@ -39,8 +34,41 @@ struct UninstallerView: View {
         return s
     }
 
+    private var startScreen: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            ModuleIntro(title: CleanModule.uninstaller.title,
+                        subtitle: "Xoá ứng dụng cùng toàn bộ tệp nó để lại — thứ mà kéo vào Thùng rác không lấy đi được.",
+                        icon: CleanModule.uninstaller.icon,
+                        gem: skin.gem,
+                        highlights: CleanModule.uninstaller.highlights)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottom) {
+            CircleActionButton(title: "Bắt đầu", accent: skin.action) { store.load() }
+                .padding(.bottom, 22)
+        }
+    }
+
+    private var browser: some View {
+        VStack(spacing: 0) {
+            toolbar
+                .padding(.horizontal, Metrics.contentPadding)
+                .padding(.bottom, 14)
+
+            HStack(spacing: 14) {
+                appList.frame(width: 320)
+                detail
+            }
+            .padding(.horizontal, Metrics.contentPadding)
+            .padding(.bottom, Metrics.contentPadding)
+        }
+    }
+
     private var toolbar: some View {
         HStack(spacing: 10) {
+            PillButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
             SearchField(placeholder: "Tìm ứng dụng", text: $store.search).frame(width: 210)
 
             Menu {

@@ -856,12 +856,24 @@ struct HeroEmblem: View {
 // MARK: - Màn khởi đầu của một mục
 
 /// Hai cột: khối 3D bên trái, bên phải là tên mục, một câu mô tả và ba việc nó sẽ làm.
-struct ModuleIntro: View {
+struct ModuleIntro<Extra: View>: View {
     let title: String
     let subtitle: String
     let icon: String
     let gem: [Color]
     let highlights: [(icon: String, title: String)]
+    @ViewBuilder var extra: Extra
+
+    init(title: String, subtitle: String, icon: String, gem: [Color],
+         highlights: [(icon: String, title: String)],
+         @ViewBuilder extra: () -> Extra = { EmptyView() }) {
+        self.title = title
+        self.subtitle = subtitle
+        self.icon = icon
+        self.gem = gem
+        self.highlights = highlights
+        self.extra = extra()
+    }
 
     var body: some View {
         HStack(spacing: 54) {
@@ -905,6 +917,8 @@ struct ModuleIntro: View {
                     }
                 }
                 .padding(.top, 26)
+
+                extra.padding(.top, 22)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -34,15 +34,19 @@ struct LargeOldView: View {
     private var startScreen: some View {
         VStack(spacing: 0) {
             Spacer()
-            GemView(symbol: "chart.pie.fill", colors: skin.gem, size: 142).padding(.bottom, 18)
-            HeroHeadline(title: "Tệp lớn & cũ",
-                         subtitle: "Tìm các tệp từ \(settings.largeMinMB) MB trở lên trong thư mục nhà.\nLibrary và node_modules được bỏ qua cho nhanh.") {
+            ModuleIntro(title: CleanModule.largeOld.title,
+                        subtitle: "Tìm các tệp từ \(settings.largeMinMB) MB trở lên trong thư mục nhà. Library và node_modules được bỏ qua cho nhanh.",
+                        icon: CleanModule.largeOld.icon,
+                        gem: skin.gem,
+                        highlights: CleanModule.largeOld.highlights) {
                 PillButton(title: "Chọn thư mục khác…", systemImage: "folder") { pickRoot() }
             }
-            .padding(.bottom, 26)
-            CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
             Spacer()
-            Spacer().frame(height: 30)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottom) {
+            CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
+                .padding(.bottom, 22)
         }
     }
 
