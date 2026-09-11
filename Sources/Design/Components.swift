@@ -784,6 +784,75 @@ extension View {
     }
 }
 
+// MARK: - Huy hiệu lớn ở màn khởi đầu
+
+/// Biểu tượng lớn không khung: một ký hiệu tô gradient nổi trên quầng sáng, có vòng mảnh
+/// và vài hạt sáng xoay quanh. Cố tình không bo thành khối vuông — như vậy trông chẳng khác
+/// gì một cái icon ứng dụng phóng to.
+struct HeroEmblem: View {
+    let icon: String
+    let gem: [Color]
+    var size: CGFloat = 210
+
+    @State private var spin = false
+    @State private var breathe = false
+
+    var body: some View {
+        ZStack {
+            // Quầng sáng nền
+            Circle()
+                .fill(RadialGradient(colors: [gem[0].opacity(0.5), gem[1].opacity(0.3), .clear],
+                                     center: .center,
+                                     startRadius: size * 0.04, endRadius: size * 0.6))
+                .frame(width: size * 1.35, height: size * 1.35)
+                .blur(radius: size * 0.06)
+                .scaleEffect(breathe ? 1.04 : 0.97)
+                .animation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true),
+                           value: breathe)
+
+            // Vòng mảnh cố định
+            Circle()
+                .strokeBorder(LinearGradient(colors: [.white.opacity(0.42), .white.opacity(0.06)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing),
+                              lineWidth: 1.2)
+                .frame(width: size, height: size)
+
+            // Cung sáng xoay chậm, cho biết app đang chờ chứ không đứng hình
+            Circle()
+                .trim(from: 0, to: 0.22)
+                .stroke(LinearGradient(colors: [gem[0], .clear],
+                                       startPoint: .leading, endPoint: .trailing),
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .frame(width: size * 1.09, height: size * 1.09)
+                .rotationEffect(.degrees(spin ? 360 : 0))
+                .animation(.linear(duration: 14).repeatForever(autoreverses: false), value: spin)
+
+            // Vài hạt sáng rải quanh
+            ForEach(0..<7, id: \.self) { i in
+                let angle = Double(i) / 7 * 2 * .pi
+                let radius = size * (i % 2 == 0 ? 0.62 : 0.72)
+                Circle()
+                    .fill(Color.white.opacity(i % 3 == 0 ? 0.55 : 0.25))
+                    .frame(width: i % 3 == 0 ? 5 : 3, height: i % 3 == 0 ? 5 : 3)
+                    .offset(x: cos(angle) * radius, y: sin(angle) * radius)
+                    .blur(radius: i % 3 == 0 ? 0 : 0.6)
+            }
+            .rotationEffect(.degrees(spin ? -360 : 0))
+            .animation(.linear(duration: 40).repeatForever(autoreverses: false), value: spin)
+
+            // Ký hiệu chính
+            Image(systemName: icon)
+                .font(.system(size: size * 0.46, weight: .regular))
+                .foregroundStyle(LinearGradient(colors: [.white, .white.opacity(0.82), gem[0]],
+                                                startPoint: .top, endPoint: .bottom))
+                .shadow(color: .white.opacity(0.35), radius: size * 0.07)
+                .shadow(color: gem[2].opacity(0.8), radius: size * 0.05, y: size * 0.025)
+        }
+        .frame(width: size * 1.4, height: size * 1.4)
+        .onAppear { spin = true; breathe = true }
+    }
+}
+
 // MARK: - Màn khởi đầu của một mục
 
 /// Hai cột: khối 3D bên trái, bên phải là tên mục, một câu mô tả và ba việc nó sẽ làm.
@@ -796,7 +865,7 @@ struct ModuleIntro: View {
 
     var body: some View {
         HStack(spacing: 54) {
-            GemView(symbol: icon, colors: gem, size: 196)
+            HeroEmblem(icon: icon, gem: gem, size: 200)
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 0) {
