@@ -43,7 +43,9 @@ struct ModuleSkin {
     /// để nút chính ở mọi mục đều nhận ra ngay là cùng một loại hành động.
     let action: Color
 
-    static let appAccent = Color(hex: "#A855F7")
+    /// Xanh lá tươi: không trùng với nền của mục nào (hồng, chàm, cam, teal)
+    /// nên nút chính luôn nổi, và màu này hợp nghĩa "đã sạch".
+    static let appAccent = Color(hex: "#22C55E")
 
     static func skin(for module: CleanModule) -> ModuleSkin {
         switch module {
