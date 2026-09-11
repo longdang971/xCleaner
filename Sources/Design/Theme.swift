@@ -45,10 +45,10 @@ struct ModuleSkin {
     static func skin(for module: CleanModule) -> ModuleSkin {
         switch module {
         case .smartScan:
-            return .init(deep: Color(hex: "#1B0B45"), mid: Color(hex: "#6C2BD9"),
-                         glow: Color(hex: "#A855F7"),
-                         gem: [Color(hex: "#C084FC"), Color(hex: "#7C3AED"), Color(hex: "#3B0F80")],
-                         action: Color(hex: "#E935C1"))
+            return .init(deep: Color(hex: "#37062A"), mid: Color(hex: "#B31F86"),
+                         glow: Color(hex: "#F472B6"),
+                         gem: [Color(hex: "#F9A8D4"), Color(hex: "#DB2777"), Color(hex: "#5C0B44")],
+                         action: Color(hex: "#A855F7"))
         case .systemJunk:
             return .init(deep: Color(hex: "#042616"), mid: Color(hex: "#12874C"),
                          glow: Color(hex: "#34D399"),
@@ -60,10 +60,10 @@ struct ModuleSkin {
                          gem: [Color(hex: "#93C5FD"), Color(hex: "#3B82F6"), Color(hex: "#132B6B")],
                          action: Color(hex: "#22D3EE"))
         case .privacy:
-            return .init(deep: Color(hex: "#37062A"), mid: Color(hex: "#B31F86"),
-                         glow: Color(hex: "#F472B6"),
-                         gem: [Color(hex: "#F9A8D4"), Color(hex: "#DB2777"), Color(hex: "#5C0B44")],
-                         action: Color(hex: "#A855F7"))
+            return .init(deep: Color(hex: "#1B0B45"), mid: Color(hex: "#6C2BD9"),
+                         glow: Color(hex: "#A855F7"),
+                         gem: [Color(hex: "#C084FC"), Color(hex: "#7C3AED"), Color(hex: "#3B0F80")],
+                         action: Color(hex: "#E935C1"))
         case .uninstaller:
             return .init(deep: Color(hex: "#0C1440"), mid: Color(hex: "#3B4FD8"),
                          glow: Color(hex: "#818CF8"),

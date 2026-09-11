@@ -9,14 +9,8 @@ struct UninstallerView: View {
     private let skin = ModuleSkin.skin(for: .uninstaller)
 
     var body: some View {
-        Group {
-            if store.apps.isEmpty && !store.isLoading {
-                startScreen
-            } else {
-                browser
-            }
-        }
-        .animation(Motion.standard, value: store.apps.isEmpty)
+        browser
+            .onAppear { if store.apps.isEmpty && !store.isLoading { store.load() } }
         .confirmationDialog("Gỡ \(store.selectedApp?.name ?? "")?",
                             isPresented: $confirming, titleVisibility: .visible) {
             Button("Gỡ ứng dụng", role: .destructive) { store.uninstall() }
@@ -32,23 +26,6 @@ struct UninstallerView: View {
             s += "\nMột số tệp nằm ngoài thư mục nhà, macOS sẽ hỏi mật khẩu quản trị."
         }
         return s
-    }
-
-    private var startScreen: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            ModuleIntro(title: CleanModule.uninstaller.title,
-                        subtitle: "Xoá ứng dụng cùng toàn bộ tệp nó để lại — thứ mà kéo vào Thùng rác không lấy đi được.",
-                        icon: CleanModule.uninstaller.icon,
-                        gem: skin.gem,
-                        highlights: CleanModule.uninstaller.highlights)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .bottom) {
-            CircleActionButton(title: "Bắt đầu", accent: skin.action) { store.load() }
-                .padding(.bottom, 22)
-        }
     }
 
     private var browser: some View {
@@ -68,7 +45,6 @@ struct UninstallerView: View {
 
     private var toolbar: some View {
         HStack(spacing: 10) {
-            PillButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
             SearchField(placeholder: "Tìm ứng dụng", text: $store.search).frame(width: 210)
 
             Menu {
@@ -236,6 +212,16 @@ private struct AppRow: View {
                 }
             }
             .contentShape(Rectangle())
+            .overlay(alignment: .bottom) {
+                // Đường kẻ mảnh giữa các hàng; hàng đang chọn có nền riêng nên không cần.
+                if !isSelected {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.09))
+                        .frame(height: 1)
+                        .padding(.leading, 46)
+                        .padding(.trailing, 10)
+                }
+            }
         }
         .buttonStyle(.plain)
         .onHover { h in hovering = h }

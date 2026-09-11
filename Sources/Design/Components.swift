@@ -488,7 +488,8 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 16) {
             if let gem {
-                GemView(symbol: icon, colors: gem, size: 108)
+                // Cùng kiểu huy hiệu không khung như màn khởi đầu.
+                HeroEmblem(icon: icon, gem: gem, size: 120)
             } else {
                 Image(systemName: icon)
                     .font(.system(size: 38, weight: .light))
