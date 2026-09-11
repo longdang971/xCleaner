@@ -160,17 +160,7 @@ struct GroupedModuleView: View {
                                    itemCount: store.selectedItems.count,
                                    groupCount: store.groups.count,
                                    restoredCount: store.restoredCount) {
-                        HStack(spacing: 8) {
-                            PillButton(title: "Chọn tất cả") {
-                                withAnimation(Motion.snappy) { store.selectAll(true) }
-                            }
-                            PillButton(title: "Bỏ chọn") {
-                                withAnimation(Motion.snappy) { store.selectAll(false) }
-                            }
-                            PillButton(title: "Quét lại", systemImage: "arrow.clockwise") {
-                                store.scan()
-                            }
-                        }
+                        EmptyView()
                     }
                 }
             }
@@ -197,6 +187,21 @@ struct GroupedModuleView: View {
         }
         .overlay(alignment: .bottom) {
             if !store.groups.isEmpty { cleanButton }
+        }
+        .overlay(alignment: .topTrailing) {
+            if !store.groups.isEmpty {
+                IconToolbar(actions: [
+                    .init(icon: "checkmark.circle", help: "Chọn tất cả") {
+                        withAnimation(Motion.snappy) { store.selectAll(true) }
+                    },
+                    .init(icon: "circle.slash", help: "Bỏ chọn tất cả") {
+                        withAnimation(Motion.snappy) { store.selectAll(false) }
+                    },
+                    .init(icon: "arrow.clockwise", help: "Quét lại") { store.scan() }
+                ])
+                .padding(.trailing, Metrics.contentPadding)
+                .padding(.top, 6)
+            }
         }
     }
 
@@ -401,6 +406,15 @@ struct GroupDetailView: View {
             }
         }
         .overlay(alignment: .bottom) { cleanButton }
+        .overlay(alignment: .topTrailing) {
+            IconToolbar(actions: [
+                .init(icon: group.selection == .all ? "circle.slash" : "checkmark.circle",
+                      help: group.selection == .all ? "Bỏ chọn tất cả" : "Chọn tất cả",
+                      run: onToggleGroup)
+            ])
+            .padding(.trailing, Metrics.contentPadding)
+            .padding(.top, 6)
+        }
     }
 
     private var header: some View {
@@ -418,8 +432,6 @@ struct GroupDetailView: View {
                             ? "Một phần danh sách bị macOS chặn — cấp Toàn quyền truy cập đĩa để thấy đủ"
                             : "\(group.selectedCount)/\(group.items.count) mục · \(Fmt.size(groupSelectedSize)) trong \(Fmt.size(group.totalSize))") {
                 HStack(spacing: 8) {
-                    PillButton(title: group.selection == .all ? "Bỏ chọn tất cả" : "Chọn tất cả",
-                               action: onToggleGroup)
                     if group.needsFullDiskAccess {
                         PillButton(title: "Cấp quyền truy cập đĩa", kind: .warning,
                                    action: openFullDiskAccess)
@@ -506,11 +518,6 @@ struct PartCard: View {
                                center: UnitPoint(x: 0.92, y: 0.0),
                                startRadius: 0, endRadius: 420)
 
-                GroupGlyph(bundleID: bundleID, fallback: icon,
-                           size: bundleID == nil ? 64 : 70, opacity: 0.16)
-                    .padding(.trailing, 16)
-                    .padding(.top, 8)
-
                 LinearGradient(colors: [.clear, .black.opacity(0.16)],
                                startPoint: .top, endPoint: .bottom)
             }
@@ -528,6 +535,17 @@ struct PartCard: View {
     private var header: some View {
         HStack(spacing: 10) {
             TriStateBox(state: selection, action: onToggleAll)
+
+            if let bundleID, let appIcon = AppIconProvider.icon(forBundleID: bundleID) {
+                Image(nsImage: appIcon)
+                    .resizable().interpolation(.high)
+                    .frame(width: 19, height: 19)
+            } else {
+                Image(systemName: icon)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.85))
+                    .frame(width: 19)
+            }
 
             Text(title)
                 .font(.system(size: 13.5, weight: .semibold))
@@ -577,10 +595,6 @@ struct ItemRow: View {
             }
 
             Spacer(minLength: 8)
-
-            if item.safety == .sensitive {
-                SafetyBadge(level: .sensitive)
-            }
 
             if item.requiresAdmin {
                 Image(systemName: "lock.fill").font(.system(size: 9)).foregroundStyle(Palette.warning)

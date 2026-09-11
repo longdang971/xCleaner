@@ -352,10 +352,10 @@ struct SafetyBadge: View {
     var level: SafetyLevel
     var body: some View {
         Text(level.label)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(Palette.safetyColor(level))
-            .padding(.horizontal, 7).padding(.vertical, 2)
-            .background(Capsule().fill(Palette.safetyColor(level).opacity(0.20)))
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.black.opacity(0.82))
+            .padding(.horizontal, 8).padding(.vertical, 2.5)
+            .background(Capsule().fill(Palette.safetyColor(level)))
     }
 }
 
@@ -363,11 +363,11 @@ struct AdminBadge: View {
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: "lock.fill").font(.system(size: 8, weight: .bold))
-            Text("Cần mật khẩu").font(.system(size: 10, weight: .semibold))
+            Text("Cần mật khẩu").font(.system(size: 10, weight: .bold))
         }
-        .foregroundStyle(Palette.warning)
-        .padding(.horizontal, 7).padding(.vertical, 2)
-        .background(Capsule().fill(Palette.warning.opacity(0.20)))
+        .foregroundStyle(.black.opacity(0.82))
+        .padding(.horizontal, 8).padding(.vertical, 2.5)
+        .background(Capsule().fill(Palette.warning))
     }
 }
 
@@ -679,5 +679,54 @@ struct ResultHeadline<Trailing: View>: View {
         }
         if restoredCount > 0 { parts.append("giữ lựa chọn lần trước cho \(restoredCount) mục") }
         return parts.joined(separator: " · ")
+    }
+}
+
+// MARK: - Cụm nút biểu tượng ở góc
+
+/// Vài thao tác phụ gom thành một cụm nhỏ nằm ở góc, nhường chỗ giữa cho tiêu đề.
+struct IconToolbar: View {
+    struct Action: Identifiable {
+        let id = UUID()
+        let icon: String
+        let help: String
+        let run: () -> Void
+    }
+
+    var actions: [Action]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(actions.enumerated()), id: \.element.id) { idx, action in
+                IconToolbarButton(action: action)
+                if idx < actions.count - 1 {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.16))
+                        .frame(width: 1, height: 16)
+                }
+            }
+        }
+        .background(Capsule().fill(Color.white.opacity(0.13)))
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
+        .clipShape(Capsule())
+    }
+}
+
+private struct IconToolbarButton: View {
+    let action: IconToolbar.Action
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action.run) {
+            Image(systemName: action.icon)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 30)
+                .background(Color.white.opacity(hovering ? 0.16 : 0))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(action.help)
+        .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
     }
 }
