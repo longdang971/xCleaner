@@ -33,6 +33,20 @@ enum DebugCapture {
         let shouldQuit = env["XCLEANER_SHOT_QUIT"] == "1"
         let action = env["XCLEANER_SHOT_ACTION"]
 
+        // Cửa sổ cao hơn màn hình vẫn chụp được qua CGWindowList, tiện khi cần thấy trọn
+        // một danh sách dài trong ảnh.
+        if let size = env["XCLEANER_WINDOW"] {
+            let parts = size.split(separator: "x").compactMap { Double($0) }
+            if parts.count == 2 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    guard let w = NSApp.windows.first(where: { $0.isVisible }) else { return }
+                    var f = w.frame
+                    f.size = CGSize(width: parts[0], height: parts[1])
+                    w.setFrame(f, display: true)
+                }
+            }
+        }
+
         if let mode = env["XCLEANER_APPEARANCE"] {
             NSApp.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
         }

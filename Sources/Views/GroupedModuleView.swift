@@ -393,6 +393,7 @@ struct GroupDetailView: View {
                                         ? Self.icon(forPart: section.title) : group.icon,
                                      bundleID: group.categoryAppIDs[section.title]
                                         ?? (section.hasCategory ? nil : group.appBundleID),
+                                     subtitle: section.hasCategory ? "" : group.subtitle,
                                      gem: TileGems.gem(for: gemBase + idx),
                                      items: section.items,
                                      subcategories: section.hasCategory
@@ -510,6 +511,7 @@ struct PartCard: View {
     let title: String
     let icon: String
     var bundleID: String? = nil
+    var subtitle: String = ""
     let gem: [Color]
     let items: [CleanItem]
     var subcategories: [String] = []
