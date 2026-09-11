@@ -21,7 +21,7 @@ struct ProgressTile: View {
     /// Nhãn dưới số liệu của thẻ đã xong.
     var doneCaption: String = "để dọn"
     /// Câu hiện khi thẻ đang chạy.
-    var runningTitle: String = "Đang tìm…"
+    var runningTitle: String = "Đang quét…"
 
     private var isRunning: Bool { phase == .running }
     private var isPending: Bool { phase == .pending }
@@ -147,7 +147,7 @@ struct ProgressGrid: View {
     let detail: String
     var entries: [CleanedEntry] = []
     var doneCaption: String = "để dọn"
-    var runningTitle: String = "Đang tìm…"
+    var runningTitle: String = "Đang quét…"
 
     private let spacing: CGFloat = 14
 
