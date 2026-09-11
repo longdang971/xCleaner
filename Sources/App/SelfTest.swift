@@ -144,7 +144,7 @@ enum SelfTest {
     private static func testSelectionMemory() {
         print("[SelectionMemory] nhớ đúng phần người dùng đã đổi")
         let memory = SelectionMemory.shared
-        let saved = UserDefaults.standard.dictionary(forKey: "selectionOverrides")
+        let saved = UserDefaults.standard.dictionary(forKey: "selectionOverrides.v2")
         memory.forgetAll()
 
         let dir = makeSandbox()
@@ -182,8 +182,22 @@ enum SelfTest {
         memory.record(back[0].items)
         check("trở lại mặc định thì xoá khỏi bộ nhớ", memory.count == 0, "(còn \(memory.count))")
 
+        // Ghi nhớ mà làm cho không còn gì được chọn thì phải bị bỏ qua
+        var all = freshGroups()
+        for i in all[0].items.indices { all[0].items[i].isSelected = false }
+        memory.record(all[0].items)
+        var afterAll = freshGroups()
+        let restoredAll = memory.apply(to: &afterAll)
+        let everythingOff = afterAll.allSatisfy { $0.selectedCount == 0 }
+        check("ghi nhớ bỏ chọn hết thì nhận ra được", restoredAll > 0 && everythingOff)
+        memory.forget(afterAll.flatMap(\.items))
+        var recovered = freshGroups()
+        _ = memory.apply(to: &recovered)
+        check("quên đi rồi thì quay lại mặc định",
+              recovered[0].items.filter(\.isSelected).count == 2)
+
         memory.forgetAll()
-        if let saved { UserDefaults.standard.set(saved, forKey: "selectionOverrides") }
+        if let saved { UserDefaults.standard.set(saved, forKey: "selectionOverrides.v2") }
         try? FileManager.default.removeItem(at: sandbox)
     }
 

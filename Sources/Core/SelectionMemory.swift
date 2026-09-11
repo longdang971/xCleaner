@@ -11,12 +11,16 @@ final class SelectionMemory {
 
     static let shared = SelectionMemory()
 
-    private let defaultsKey = "selectionOverrides"
+    // Khoá có đánh số: bản đầu từng ghi nhớ cả thao tác "bỏ chọn tất cả", để lại một đống
+    // ghi nhớ vô nghĩa khiến lần quét sau không có gì được chọn. Đổi khoá là bỏ hẳn đống đó.
+    private let defaultsKey = "selectionOverrides.v2"
+    private let legacyKey = "selectionOverrides"
     private let lock = NSLock()
     private var overrides: [String: Bool]
 
     private init() {
         overrides = (UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: Bool]) ?? [:]
+        UserDefaults.standard.removeObject(forKey: legacyKey)
     }
 
     var isEnabled: Bool {

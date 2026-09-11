@@ -121,7 +121,17 @@ final class ScanStore: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 var g = result
-                let restored = SelectionMemory.shared.apply(to: &g)
+                var restored = SelectionMemory.shared.apply(to: &g)
+
+                // Nếu ghi nhớ cũ làm cho không còn mục nào được chọn thì bỏ nó đi. Không ai
+                // muốn quét xong rồi nhìn một màn hình trắng trơn với nút Dọn mờ tịt, kể cả
+                // người đã từng bấm "bỏ chọn tất cả" ở lần trước.
+                let defaultHasSelection = result.contains { $0.items.contains(where: \.defaultSelected) }
+                if restored > 0, defaultHasSelection, g.allSatisfy({ $0.selectedCount == 0 }) {
+                    SelectionMemory.shared.forget(g.flatMap(\.items))
+                    g = result
+                    restored = 0
+                }
                 withAnimation(Motion.standard) {
                     self.restoredCount = restored
                     self.groups = g
