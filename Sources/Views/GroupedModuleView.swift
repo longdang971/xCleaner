@@ -245,13 +245,34 @@ struct GroupTile: View {
         }
         .padding(16)
         .frame(height: 168, alignment: .topLeading)
-        .glass(strength: hovering ? Palette.glassStrong : Palette.glass)
-        .overlay(alignment: .topTrailing) {
-            // Khối 3D nhô một phần ra khỏi mép thẻ — nó phải nằm trên nền kính, không bị cắt.
-            GemView(symbol: group.icon, colors: gem, size: 66, floating: false)
-                .offset(x: 14, y: -14)
-                .allowsHitTesting(false)
+        .background {
+            // Thẻ mang màu của chính khối 3D, còn khối 3D chìm xuống làm hoạ tiết nền:
+            // vẫn nằm góc trên phải nhưng mờ đi và bị mép thẻ cắt, nên không tranh chỗ với chữ.
+            ZStack(alignment: .topTrailing) {
+                // Màu của thẻ chính là màu của khối 3D. Không chèn lớp kính trắng xuống dưới —
+                // trắng trộn với màu rồi lại trộn với nền tím sẽ ra một màu xỉn như bùn.
+                LinearGradient(colors: [gem[1].opacity(hovering ? 0.92 : 0.82),
+                                        gem[2].opacity(hovering ? 0.78 : 0.62)],
+                               startPoint: .topTrailing, endPoint: .bottomLeading)
+
+                // Hoạ tiết nền: chỉ mỗi biểu tượng, không khối bao, không viền — để nó đọc ra
+                // như hình in chìm trên thẻ chứ không phải một vật thể dán lên.
+                Image(systemName: group.icon)
+                    .font(.system(size: 104, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(hovering ? 0.22 : 0.16))
+                    .offset(x: 26, y: -14)
+
+                // Tối dần về phía dưới trái để chữ luôn tách khỏi nền màu
+                LinearGradient(colors: [.clear, .black.opacity(0.30)],
+                               startPoint: .topTrailing, endPoint: .bottomLeading)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
         }
+        .overlay(
+            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.24), radius: 16, y: 7)
         .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
         .onTapGesture(perform: onReview)
     }
