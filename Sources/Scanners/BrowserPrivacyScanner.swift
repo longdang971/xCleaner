@@ -90,31 +90,45 @@ struct BrowserPrivacyScanner: ModuleScanner {
 
     // MARK: - Quét
 
+    /// Danh sách trình duyệt có mặt trên máy — chỉ kiểm tra thư mục nên rất nhanh.
+    static func installedBrowsers() -> [Browser] {
+        browsers.filter { b in
+            FileUtils.exists(FileUtils.homePath(b.support))
+                || b.caches.contains { FileUtils.exists(FileUtils.homePath($0)) }
+        }
+    }
+
+    var stages: [ScanStage] {
+        Self.installedBrowsers().map {
+            ScanStage(id: "browser-" + $0.bundleID, title: $0.name,
+                      icon: "globe", appBundleID: $0.bundleID)
+        }
+    }
+
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var groups: [CleanGroup] = []
         var found: Int64 = 0
 
-        let present = Self.browsers.filter { b in
-            FileUtils.exists(FileUtils.homePath(b.support))
-                || b.caches.contains { FileUtils.exists(FileUtils.homePath($0)) }
-        }
+        let present = Self.installedBrowsers()
+        let stage = StageReporter(total: max(1, present.count), emit: progress)
 
         for (idx, browser) in present.enumerated() {
             if cancel.isCancelled { break }
-            progress(ScanProgress(fraction: Double(idx) / Double(max(1, present.count)),
-                                  message: browser.name, bytesFound: found))
+            stage.begin(idx)
 
             let running = FileUtils.isRunning(bundleID: browser.bundleID)
             var items: [CleanItem] = []
 
             switch browser.kind {
-            case .chromium: items = chromiumItems(browser, cancel: cancel, progress: progress)
+            case .chromium: items = chromiumItems(browser, cancel: cancel, stage: stage)
             case .firefox:  items = firefoxItems(browser, cancel: cancel)
             case .safari:   items = safariItems(browser, cancel: cancel)
             }
 
+            let size = items.reduce(0) { $0 + $1.size }
+            stage.finish(idx, bytes: size)
             guard !items.isEmpty else { continue }
-            found += items.reduce(0) { $0 + $1.size }
+            found += size
 
             // Sắp theo thứ tự phần đã định, trong mỗi phần thì mục nặng lên trước.
             let order = [Part.history, Part.downloads, Part.cookies, Part.autofill,
@@ -143,7 +157,7 @@ struct BrowserPrivacyScanner: ModuleScanner {
                 appBundleID: browser.bundleID))
         }
 
-        progress(ScanProgress(fraction: 1, message: "Xong", bytesFound: found))
+        stage.done()
         return groups
     }
 
@@ -256,7 +270,7 @@ struct BrowserPrivacyScanner: ModuleScanner {
     ]
 
     private func chromiumItems(_ b: Browser, cancel: CancelToken,
-                               progress: @escaping (ScanProgress) -> Void) -> [CleanItem] {
+                               stage: StageReporter) -> [CleanItem] {
         var items: [CleanItem] = []
         let root = FileUtils.homePath(b.support)
 
@@ -279,10 +293,10 @@ struct BrowserPrivacyScanner: ModuleScanner {
         for p in profiles {
             if cancel.isCancelled { break }
             let label = (p.lastPathComponent == "Default" || p == root) ? "" : " · \(p.lastPathComponent)"
-            progress(ScanProgress(fraction: 0, message: "\(b.name)\(label)"))
 
             for e in Self.chromiumEntries {
                 if cancel.isCancelled { break }
+                stage.working(e.name)
                 if let i = makeItem(p.appendingPathComponent(e.file),
                                     name: e.name + label,
                                     detail: e.detail,

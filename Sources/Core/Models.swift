@@ -189,10 +189,46 @@ struct CleanGroup: Identifiable {
 
 // MARK: - Tiến trình quét
 
+/// Một chặng trong lúc quét. Người dùng nhìn thấy chúng như các ô: ô đang chạy phình to,
+/// ô đã xong thu lại và hiện kết quả.
+struct ScanStage: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let icon: String
+    /// Bundle id để lấy biểu tượng thật (trình duyệt), nếu có.
+    var appBundleID: String? = nil
+
+    static func == (l: ScanStage, r: ScanStage) -> Bool { l.id == r.id }
+}
+
 struct ScanProgress {
     var fraction: Double = 0
+    /// Thứ đang được xử lý — tên tệp hoặc thư mục, để người dùng thấy máy đang thật sự làm việc.
     var message: String = ""
     var bytesFound: Int64 = 0
+    /// Chặng đang chạy, tính theo chỉ số trong `ModuleScanner.stages`.
+    var stageIndex: Int? = nil
+    /// Dung lượng đã chốt của các chặng đã xong.
+    var stageBytes: [Int: Int64] = [:]
+}
+
+// MARK: - Tiến trình dọn
+
+/// Một mục vừa được xử lý xong, để danh sách tick dần trong lúc dọn.
+struct CleanedEntry: Identifiable, Equatable {
+    let id: UUID
+    let name: String
+    let bytes: Int64
+    let failed: Bool
+
+    init(name: String, bytes: Int64, failed: Bool = false) {
+        self.id = UUID()
+        self.name = name
+        self.bytes = bytes
+        self.failed = failed
+    }
+
+    static func == (l: CleanedEntry, r: CleanedEntry) -> Bool { l.id == r.id }
 }
 
 // MARK: - Kết quả dọn

@@ -6,12 +6,20 @@ struct TrashDownloadsScanner: ModuleScanner {
     /// Tệp tải về cũ hơn ngần này ngày mới được đề xuất.
     var oldDownloadDays: Int = 60
 
+    var stages: [ScanStage] {
+        [.init(id: "trash", title: "Thùng rác", icon: "trash.fill"),
+         .init(id: "downloads", title: "Thư mục Tải về", icon: "arrow.down.circle.fill"),
+         .init(id: "mail", title: "Đính kèm thư", icon: "paperclip"),
+         .init(id: "shots", title: "Ảnh chụp màn hình", icon: "camera.viewfinder")]
+    }
+
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var groups: [CleanGroup] = []
         var found: Int64 = 0
+        let stage = StageReporter(total: 4, emit: progress)
 
         // 1. Thùng rác — của người dùng và trên từng ổ đĩa gắn ngoài.
-        progress(ScanProgress(fraction: 0.05, message: "Thùng rác…"))
+        stage.begin(0)
         var trash: [CleanItem] = []
         var trashDirs: [URL] = [FileUtils.homePath(".Trash")]
         let uid = getuid()
@@ -23,13 +31,14 @@ struct TrashDownloadsScanner: ModuleScanner {
             guard FileUtils.isDirectory(dir) else { continue }
             for f in FileUtils.children(of: dir) {
                 if cancel.isCancelled { break }
-                progress(ScanProgress(fraction: 0.1, message: "Thùng rác: \(f.lastPathComponent)"))
+                stage.working(f.lastPathComponent)
                 if let i = makeItem(f, detail: Fmt.relativeAge(FileUtils.modificationDate(of: f)),
                                     cancel: cancel) { trash.append(i) }
             }
         }
         trash.sort { $0.size > $1.size }
         found += trash.reduce(0) { $0 + $1.size }
+        stage.finish(0, bytes: trash.reduce(0) { $0 + $1.size })
         if !trash.isEmpty {
             groups.append(CleanGroup(id: "trash", title: "Thùng rác",
                                      subtitle: "Bao gồm cả Thùng rác trên ổ đĩa gắn ngoài",
@@ -38,7 +47,7 @@ struct TrashDownloadsScanner: ModuleScanner {
         if cancel.isCancelled { return groups }
 
         // 2. Tệp cài đặt trong Downloads (.dmg, .pkg, .zip…) đã tải lâu.
-        progress(ScanProgress(fraction: 0.4, message: "Thư mục Tải về…"))
+        stage.begin(1)
         let installerExts: Set<String> = ["dmg", "pkg", "mpkg", "iso", "zip", "tar", "gz", "bz2",
                                           "xz", "7z", "rar", "sparseimage", "sparsebundle"]
         var installers: [CleanItem] = []
@@ -49,6 +58,7 @@ struct TrashDownloadsScanner: ModuleScanner {
             if cancel.isCancelled { break }
             let name = f.lastPathComponent
             if name.hasPrefix(".") { continue }
+            stage.working(name)
             let modified = FileUtils.modificationDate(of: f)
             let ext = f.pathExtension.lowercased()
             if installerExts.contains(ext) {
@@ -66,6 +76,8 @@ struct TrashDownloadsScanner: ModuleScanner {
         installers.sort { $0.size > $1.size }
         oldFiles.sort { $0.size > $1.size }
         found += installers.reduce(0) { $0 + $1.size } + oldFiles.reduce(0) { $0 + $1.size }
+        stage.finish(1, bytes: installers.reduce(0) { $0 + $1.size }
+                     + oldFiles.reduce(0) { $0 + $1.size })
 
         if !installers.isEmpty {
             groups.append(CleanGroup(id: "installers", title: "Bộ cài đã dùng xong",
@@ -80,7 +92,7 @@ struct TrashDownloadsScanner: ModuleScanner {
         if cancel.isCancelled { return groups }
 
         // 3. Đính kèm thư đã tải về máy.
-        progress(ScanProgress(fraction: 0.75, message: "Đính kèm thư…"))
+        stage.begin(2)
         var mail: [CleanItem] = []
         let mailRoot = FileUtils.homePath("Library/Containers/com.apple.mail/Data/Library/Mail Downloads")
         for f in FileUtils.children(of: mailRoot) {
@@ -94,6 +106,7 @@ struct TrashDownloadsScanner: ModuleScanner {
                                 selected: false, cancel: cancel) { mail.append(i) }
         }
         found += mail.reduce(0) { $0 + $1.size }
+        stage.finish(2, bytes: mail.reduce(0) { $0 + $1.size })
         if !mail.isEmpty {
             groups.append(CleanGroup(id: "mail-attach", title: "Đính kèm thư",
                                      subtitle: "Bản tải về của tệp đính kèm, vẫn còn trên máy chủ",
@@ -101,7 +114,7 @@ struct TrashDownloadsScanner: ModuleScanner {
         }
 
         // 4. Ảnh chụp màn hình trên Desktop (nhiều người để dồn hàng trăm tấm).
-        progress(ScanProgress(fraction: 0.9, message: "Ảnh chụp màn hình…"))
+        stage.begin(3)
         var shots: [CleanItem] = []
         for f in FileUtils.children(of: FileUtils.homePath("Desktop")) {
             if cancel.isCancelled { break }
@@ -114,13 +127,14 @@ struct TrashDownloadsScanner: ModuleScanner {
         }
         shots.sort { $0.size > $1.size }
         found += shots.reduce(0) { $0 + $1.size }
+        stage.finish(3, bytes: shots.reduce(0) { $0 + $1.size })
         if !shots.isEmpty {
             groups.append(CleanGroup(id: "screenshots", title: "Ảnh chụp màn hình trên Desktop",
                                      subtitle: "\(shots.count) tấm — mặc định không chọn",
                                      icon: "camera.viewfinder", safety: .sensitive, items: shots))
         }
 
-        progress(ScanProgress(fraction: 1, message: "Xong", bytesFound: found))
+        stage.done()
         return groups
     }
 }

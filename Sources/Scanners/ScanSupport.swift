@@ -21,8 +21,70 @@ final class CancelToken {
 }
 
 protocol ModuleScanner {
+    /// Các chặng mà màn hình quét sẽ vẽ thành ô. Rỗng nghĩa là chỉ hiện vòng tiến trình.
+    var stages: [ScanStage] { get }
+
     /// Chạy trên luồng nền. Trả về các nhóm đã sẵn sàng hiển thị.
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup]
+}
+
+extension ModuleScanner {
+    var stages: [ScanStage] { [] }
+}
+
+/// Giữ trạng thái các chặng giúp scanner, để mỗi lần báo tiến trình không phải tự dựng lại.
+final class StageReporter {
+    private let total: Int
+    private let emit: (ScanProgress) -> Void
+    private var bytes: [Int: Int64] = [:]
+    private var current: Int = 0
+    private var found: Int64 = 0
+
+    init(total: Int, emit: @escaping (ScanProgress) -> Void) {
+        self.total = max(1, total)
+        self.emit = emit
+    }
+
+    private var stageStartedAt: CFAbsoluteTime = 0
+    /// Thời gian tối thiểu một chặng hiện trên màn hình. Máy nhanh quét xong trong chớp mắt,
+    /// không giữ lại một nhịp thì người dùng chỉ thấy màn hình nhấp nháy rồi xong.
+    private let minimumStageDuration: CFAbsoluteTime = 0.5
+
+    /// Bắt đầu một chặng.
+    func begin(_ index: Int) {
+        current = index
+        stageStartedAt = CFAbsoluteTimeGetCurrent()
+        send(message: "")
+    }
+
+    /// Đang xử lý thứ gì đó trong chặng hiện tại.
+    func working(_ what: String) {
+        send(message: what)
+    }
+
+    /// Chặng đã xong với ngần này dung lượng.
+    func finish(_ index: Int, bytes size: Int64) {
+        let elapsed = CFAbsoluteTimeGetCurrent() - stageStartedAt
+        if stageStartedAt > 0 && elapsed < minimumStageDuration {
+            Thread.sleep(forTimeInterval: minimumStageDuration - elapsed)
+        }
+        bytes[index] = size
+        found += size
+        current = min(index + 1, total - 1)
+        send(message: "")
+    }
+
+    /// Báo xong toàn bộ.
+    func done() {
+        emit(ScanProgress(fraction: 1, message: "", bytesFound: found,
+                          stageIndex: nil, stageBytes: bytes))
+    }
+
+    private func send(message: String) {
+        let fraction = (Double(current) + 0.35) / Double(total)
+        emit(ScanProgress(fraction: min(0.99, fraction), message: message,
+                          bytesFound: found, stageIndex: current, stageBytes: bytes))
+    }
 }
 
 extension ModuleScanner {

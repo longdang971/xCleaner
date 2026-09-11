@@ -9,11 +9,16 @@ enum Remover {
         var moveToTrash: Bool
         /// Câu hiển thị trong hộp thoại xin mật khẩu.
         var adminPrompt: String
+        /// Cho phép dừng giữa chừng. Phần đã xoá vẫn là đã xoá.
+        var cancel: CancelToken? = nil
     }
 
-    /// - Parameter progress: gọi trên hàng đợi nền, đã được tiết chế bởi lớp gọi.
+    /// - Parameters:
+    ///   - progress: gọi trên hàng đợi nền, đã được tiết chế bởi lớp gọi.
+    ///   - itemFinished: mỗi mục vừa xử lý xong, để màn hình tick dần từng dòng.
     static func perform(_ request: Request,
-                        progress: @escaping (Double, String) -> Void) -> CleanOutcome {
+                        progress: @escaping (Double, String) -> Void,
+                        itemFinished: @escaping (CleanItem, Bool) -> Void = { _, _ in }) -> CleanOutcome {
         var outcome = CleanOutcome()
         let fm = FileManager.default
 
@@ -40,6 +45,10 @@ enum Remover {
 
         // ---- Phần không cần quyền: xoá trực tiếp ----
         for item in userItems {
+            if request.cancel?.isCancelled == true {
+                outcome.wasCancelled = true
+                break
+            }
             done += 1
             progress(Double(done) / Double(total), item.name)
 
@@ -76,10 +85,11 @@ enum Remover {
                 outcome.removedCount += 1
                 outcome.freedBytes += item.size
             }
+            itemFinished(item, !itemFailed)
         }
 
         // ---- Phần cần quyền root: gom một lần hỏi mật khẩu ----
-        if !adminItems.isEmpty {
+        if !adminItems.isEmpty && !outcome.wasCancelled {
             progress(Double(done) / Double(total), "Đang chờ quyền quản trị…")
             outcome.usedAdmin = true
 
@@ -105,6 +115,7 @@ enum Remover {
                     } else {
                         outcome.failures.append((item.url, "Không xoá được dù đã có quyền quản trị."))
                     }
+                    itemFinished(item, gone)
                 }
             } catch PrivilegedRunner.Failure.cancelledByUser {
                 outcome.wasCancelled = true

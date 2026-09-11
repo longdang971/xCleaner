@@ -19,11 +19,13 @@ struct RootView: View {
             .ignoresSafeArea()
             .animation(Motion.skin, value: state.module)
 
-            VStack(spacing: 0) {
-                Spacer().frame(height: Metrics.titleBarHeight)
-                content
+            HStack(spacing: 0) {
+                Color.clear.frame(width: Metrics.sidebarWidth)
+                VStack(spacing: 0) {
+                    Spacer().frame(height: Metrics.titleBarHeight)
+                    content
+                }
             }
-            .padding(.leading, Metrics.sidebarWidth)
 
             // Tiêu đề phải căn giữa đúng vùng nội dung, giống mọi thứ khác trong trang.
             // Căn giữa cả cửa sổ thì nó lệch khỏi tiêu đề trang đúng bằng nửa bề rộng sidebar.

@@ -51,6 +51,17 @@ final class ScanStore: ObservableObject {
     /// Số mục được đặt lại theo lựa chọn lần trước của người dùng.
     @Published var restoredCount: Int = 0
 
+    /// Các chặng của lần quét đang chạy, để vẽ thành ô.
+    @Published var stages: [ScanStage] = []
+    @Published var currentStage: Int? = nil
+    @Published var stageBytes: [Int: Int64] = [:]
+
+    /// Những mục vừa dọn xong, mới nhất ở cuối.
+    @Published var cleaned: [CleanedEntry] = []
+    @Published var cleanTotal: Int = 0
+
+    private let cleanCancel = CancelToken()
+
     private let cancelToken = CancelToken()
     private let throttle = ProgressThrottle()
 
@@ -89,6 +100,9 @@ final class ScanStore: ObservableObject {
         statusText = "Đang bắt đầu…"
 
         let scanner = makeScanner()
+        stages = scanner.stages
+        currentStage = stages.isEmpty ? nil : 0
+        stageBytes = [:]
         let token = cancelToken
         let throttle = self.throttle
 
@@ -99,6 +113,8 @@ final class ScanStore: ObservableObject {
                     self.progress = p.fraction
                     self.statusText = p.message
                     if p.bytesFound > 0 { self.liveBytes = p.bytesFound }
+                    if self.currentStage != p.stageIndex { self.currentStage = p.stageIndex }
+                    if self.stageBytes != p.stageBytes { self.stageBytes = p.stageBytes }
                 }
             }
             DispatchQueue.main.async {
@@ -119,6 +135,12 @@ final class ScanStore: ObservableObject {
 
     func cancelScan() {
         cancelToken.cancel()
+        statusText = "Đang dừng…"
+    }
+
+    /// Dừng giữa chừng khi đang dọn. Phần đã xoá thì vẫn là đã xoá.
+    func cancelClean() {
+        cleanCancel.cancel()
         statusText = "Đang dừng…"
     }
 
@@ -205,21 +227,33 @@ final class ScanStore: ObservableObject {
         phase = .cleaning
         progress = 0
         statusText = "Đang dọn…"
+        cleaned = []
+        cleanTotal = items.count
+        cleanCancel.reset()
 
         let request = Remover.Request(
             items: items,
             moveToTrash: settings.moveToTrash,
-            adminPrompt: "xCleaner cần quyền quản trị để xoá \(items.filter(\.requiresAdmin).count) mục trong thư mục hệ thống.")
+            adminPrompt: "xCleaner cần quyền quản trị để xoá \(items.filter(\.requiresAdmin).count) mục trong thư mục hệ thống.",
+            cancel: cleanCancel)
         let throttle = ProgressThrottle(fps: 15)
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Remover.perform(request) { fraction, message in
+            let result = Remover.perform(request, progress: { fraction, message in
                 throttle.emit {
                     guard let self else { return }
                     self.progress = fraction
                     self.statusText = message
                 }
-            }
+            }, itemFinished: { item, ok in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.cleaned.append(CleanedEntry(name: item.name, bytes: item.size,
+                                                     failed: !ok))
+                    // Giữ danh sách ngắn: người dùng chỉ nhìn vài dòng cuối.
+                    if self.cleaned.count > 60 { self.cleaned.removeFirst(self.cleaned.count - 60) }
+                }
+            })
             DispatchQueue.main.async {
                 guard let self else { return }
                 withAnimation(Motion.standard) {
@@ -255,6 +289,24 @@ final class ScanStore: ObservableObject {
             phase = .idle
         }
     }
+
+    #if DEBUG
+    /// Dựng màn "đang dọn" bằng dữ liệu giả để xem giao diện — không xoá bất cứ thứ gì.
+    func debugDemoClean() {
+        let items = Array(selectedItems.prefix(40))
+        guard !items.isEmpty else { return }
+        cleaned = []
+        cleanTotal = items.count
+        phase = .cleaning
+        for (i, item) in items.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12 * Double(i)) { [weak self] in
+                guard let self else { return }
+                self.cleaned.append(CleanedEntry(name: item.name, bytes: item.size))
+                self.progress = Double(i + 1) / Double(items.count)
+            }
+        }
+    }
+    #endif
 
     func reset() {
         phase = groups.isEmpty ? .idle : .results

@@ -6,12 +6,23 @@ import Foundation
 /// và chỉ bị xoá sau khi người dùng nhập mật khẩu.
 struct SystemJunkScanner: ModuleScanner {
 
+    var stages: [ScanStage] {
+        [.init(id: "user-cache", title: "Bộ nhớ đệm ứng dụng", icon: "shippingbox.fill"),
+         .init(id: "user-logs", title: "Nhật ký người dùng", icon: "doc.text.fill"),
+         .init(id: "crash", title: "Báo cáo sự cố", icon: "exclamationmark.triangle.fill"),
+         .init(id: "sys-cache", title: "Bộ nhớ đệm hệ thống", icon: "lock.shield.fill"),
+         .init(id: "sys-logs", title: "Nhật ký hệ thống", icon: "server.rack"),
+         .init(id: "dev-junk", title: "Công cụ lập trình", icon: "hammer.fill"),
+         .init(id: "misc", title: "Trạng thái cửa sổ", icon: "macwindow")]
+    }
+
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var groups: [CleanGroup] = []
         var found: Int64 = 0
+        let stage = StageReporter(total: 7, emit: progress)
 
         func report(_ step: Int, _ of: Int, _ msg: String) {
-            progress(ScanProgress(fraction: Double(step) / Double(of), message: msg, bytesFound: found))
+            if msg.isEmpty { stage.begin(step) } else { stage.working(msg) }
         }
 
         let steps = 7
@@ -36,6 +47,7 @@ struct SystemJunkScanner: ModuleScanner {
                                      subtitle: "Tệp tạm do app tạo ra, sẽ được dựng lại khi cần",
                                      icon: "shippingbox.fill", safety: .safe, items: userCache))
         }
+        stage.finish(0, bytes: userCache.reduce(0) { $0 + $1.size })
         if cancel.isCancelled { return groups }
 
         // 2. Nhật ký người dùng
@@ -50,6 +62,7 @@ struct SystemJunkScanner: ModuleScanner {
                                      subtitle: "Log do ứng dụng ghi ra trong lúc chạy",
                                      icon: "doc.text.fill", safety: .safe, items: userLogs))
         }
+        stage.finish(1, bytes: userLogs.reduce(0) { $0 + $1.size })
         if cancel.isCancelled { return groups }
 
         // 3. Báo cáo sự cố
@@ -70,6 +83,7 @@ struct SystemJunkScanner: ModuleScanner {
                                      subtitle: "Biên bản khi app hoặc hệ thống gặp lỗi",
                                      icon: "exclamationmark.triangle.fill", safety: .safe, items: crash))
         }
+        stage.finish(2, bytes: crash.reduce(0) { $0 + $1.size })
         if cancel.isCancelled { return groups }
 
         // 4. Bộ nhớ đệm hệ thống (cần quyền quản trị)
@@ -84,6 +98,7 @@ struct SystemJunkScanner: ModuleScanner {
                                      subtitle: "Nằm trong /Library — cần mật khẩu quản trị",
                                      icon: "lock.shield.fill", safety: .safe, items: systemCache))
         }
+        stage.finish(3, bytes: systemCache.reduce(0) { $0 + $1.size })
         if cancel.isCancelled { return groups }
 
         // 5. Nhật ký hệ thống (cần quyền quản trị)
@@ -110,6 +125,7 @@ struct SystemJunkScanner: ModuleScanner {
                                      subtitle: "Log của macOS — cần mật khẩu quản trị",
                                      icon: "server.rack", safety: .safe, items: sysLogs))
         }
+        stage.finish(4, bytes: sysLogs.reduce(0) { $0 + $1.size })
         if cancel.isCancelled { return groups }
 
         // 6. Rác của công cụ lập trình
@@ -150,6 +166,7 @@ struct SystemJunkScanner: ModuleScanner {
                                      subtitle: "Xoá xong lần build kế tiếp sẽ lâu hơn một chút",
                                      icon: "hammer.fill", safety: .review, items: dev))
         }
+        stage.finish(5, bytes: dev.reduce(0) { $0 + $1.size })
         if cancel.isCancelled { return groups }
 
         // 7. Trạng thái ứng dụng đã lưu + gói cài đặt cũ
@@ -167,8 +184,9 @@ struct SystemJunkScanner: ModuleScanner {
                                      subtitle: "Xoá sẽ mất vị trí cửa sổ và tab đang mở của app",
                                      icon: "macwindow", safety: .review, items: misc))
         }
+        stage.finish(6, bytes: misc.reduce(0) { $0 + $1.size })
 
-        progress(ScanProgress(fraction: 1, message: "Xong", bytesFound: found))
+        stage.done()
         return groups
     }
 }

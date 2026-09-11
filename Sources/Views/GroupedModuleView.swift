@@ -20,9 +20,30 @@ struct GroupedModuleView: View {
     var body: some View {
         ZStack {
             switch store.phase {
+            case .scanning where !store.stages.isEmpty:
+                ScanningView(stages: store.stages,
+                             currentStage: store.currentStage,
+                             stageBytes: store.stageBytes,
+                             currentFile: store.statusText,
+                             totalBytes: store.liveBytes,
+                             skin: skin,
+                             onStop: { store.cancelScan() })
+                    .transition(.opacity)
             case .idle, .scanning:
                 heroScreen
-            case .results, .cleaning, .done:
+            case .cleaning:
+                CleaningView(entries: store.cleaned,
+                             total: store.cleanTotal,
+                             statusText: store.statusText,
+                             progress: store.progress,
+                             skin: skin,
+                             onStop: { store.cancelClean() })
+                    .transition(.opacity)
+
+            case .done:
+                DoneScreen(store: store, skin: skin).transition(.opacity)
+
+            case .results:
                 if let id = reviewing, let group = store.groups.first(where: { $0.id == id }) {
                     GroupDetailView(group: group,
                                     skin: skin,
@@ -46,9 +67,6 @@ struct GroupedModuleView: View {
                 }
             }
 
-            if store.phase == .cleaning || store.phase == .done {
-                CleanOverlay(store: store, skin: skin).transition(.opacity).zIndex(10)
-            }
         }
         .animation(Motion.standard, value: store.phase)
         .onReceive(NotificationCenter.default.publisher(for: .xcRescan)) { _ in
@@ -57,6 +75,10 @@ struct GroupedModuleView: View {
         }
         .onChange(of: store.phase) { _ in
             #if DEBUG
+            if ProcessInfo.processInfo.environment["XCLEANER_DEMO_CLEAN"] == "1",
+               store.phase == .results {
+                store.debugDemoClean()
+            }
             if let want = ProcessInfo.processInfo.environment["XCLEANER_REVIEW"],
                store.phase == .results, reviewing == nil {
                 reviewing = want == "1" ? store.groups.first?.id
@@ -630,15 +652,12 @@ struct ItemRow: View {
 
 // MARK: - Lớp phủ lúc dọn
 
-struct CleanOverlay: View {
+struct DoneScreen: View {
     @ObservedObject var store: ScanStore
     let skin: ModuleSkin
 
     var body: some View {
         ZStack {
-            Rectangle().fill(.black.opacity(0.45)).ignoresSafeArea()
-            Rectangle().fill(.ultraThinMaterial).opacity(0.5).ignoresSafeArea()
-
             VStack(spacing: 20) {
                 if store.phase == .done, let o = store.outcome {
                     GemView(symbol: o.wasCancelled && o.freedBytes == 0

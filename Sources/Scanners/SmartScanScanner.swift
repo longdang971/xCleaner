@@ -8,28 +8,36 @@ import Foundation
 /// còn chi tiết thì bấm "Xem" là có.
 struct SmartScanScanner: ModuleScanner {
 
+    var stages: [ScanStage] {
+        [.init(id: "junk", title: "Rác hệ thống", icon: "trash.slash.fill"),
+         .init(id: "trash", title: "Thùng rác", icon: "trash.fill"),
+         .init(id: "web", title: "Trình duyệt", icon: "globe")]
+    }
+
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var bytes: Int64 = 0
+        let stage = StageReporter(total: 3, emit: progress)
 
-        func forward(_ base: Double, _ span: Double) -> (ScanProgress) -> Void {
-            { p in
-                progress(ScanProgress(fraction: base + p.fraction * span,
-                                      message: p.message,
-                                      bytesFound: bytes + p.bytesFound))
-            }
-        }
-
-        let junk = SystemJunkScanner().scan(cancel: cancel, progress: forward(0, 0.5))
+        stage.begin(0)
+        let junk = SystemJunkScanner()
+            .scan(cancel: cancel) { stage.working($0.message) }
             .filter { $0.safety == .safe }
-        bytes += junk.reduce(0) { $0 + $1.totalSize }
+        let junkBytes = junk.reduce(0) { $0 + $1.totalSize }
+        bytes += junkBytes
+        stage.finish(0, bytes: junkBytes)
         if cancel.isCancelled { return junk }
 
-        let trash = TrashDownloadsScanner().scan(cancel: cancel, progress: forward(0.5, 0.2))
+        stage.begin(1)
+        let trash = TrashDownloadsScanner()
+            .scan(cancel: cancel) { stage.working($0.message) }
             .filter { $0.id == "trash" }
-        bytes += trash.reduce(0) { $0 + $1.totalSize }
+        let trashBytes = trash.reduce(0) { $0 + $1.totalSize }
+        bytes += trashBytes
+        stage.finish(1, bytes: trashBytes)
         if cancel.isCancelled { return junk + trash }
 
-        let browsers = BrowserPrivacyScanner().scan(cancel: cancel, progress: forward(0.7, 0.3))
+        stage.begin(2)
+        let browsers = BrowserPrivacyScanner().scan(cancel: cancel) { stage.working($0.message) }
 
         var result: [CleanGroup] = []
         result += junk.filter { $0.id != "user-logs" && $0.id != "sys-logs" }
@@ -37,13 +45,16 @@ struct SmartScanScanner: ModuleScanner {
         result += trash
         if let web = mergedBrowsers(from: browsers) {
             bytes += web.totalSize
+            stage.finish(2, bytes: web.totalSize)
             result.append(web)
+        } else {
+            stage.finish(2, bytes: 0)
         }
 
         // Thẻ nào nhiều dung lượng nhất lên trước, để hàng đầu luôn là thứ đáng nhìn nhất.
         result.sort { $0.totalSize > $1.totalSize }
 
-        progress(ScanProgress(fraction: 1, message: "Xong", bytesFound: bytes))
+        stage.done()
         return result.filter { !$0.items.isEmpty }
     }
 
