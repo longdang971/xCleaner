@@ -81,6 +81,10 @@ enum DebugCapture {
     /// có vạch thì vạch là do cách chụp chứ không có thật trên màn hình.
     static func captureViaWindowList(to path: String) -> Bool {
         guard let window = NSApp.windows.first(where: { $0.isVisible }) else { return false }
+        // Cửa sổ bị che thì macOS bỏ nội dung khỏi bộ đệm và ảnh chụp ra trắng tinh.
+        NSApp.activate(ignoringOtherApps: true)
+        window.orderFrontRegardless()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
         let id = CGWindowID(window.windowNumber)
         guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, id,
                                                   [.boundsIgnoreFraming, .bestResolution]) else {

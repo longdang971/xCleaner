@@ -39,8 +39,11 @@ struct ModuleSkin {
     let mid: Color       // màu chủ đạo
     let glow: Color      // điểm sáng
     let gem: [Color]     // khối 3D
-    /// Màu nút hành động. Cố tình lệch tông khỏi nền: nút cùng màu nền sẽ chìm mất.
+    /// Màu nút hành động. Cả app dùng chung một màu nhấn — màu của Quét thông minh —
+    /// để nút chính ở mọi mục đều nhận ra ngay là cùng một loại hành động.
     let action: Color
+
+    static let appAccent = Color(hex: "#A855F7")
 
     static func skin(for module: CleanModule) -> ModuleSkin {
         switch module {
@@ -48,37 +51,37 @@ struct ModuleSkin {
             return .init(deep: Color(hex: "#37062A"), mid: Color(hex: "#B31F86"),
                          glow: Color(hex: "#F472B6"),
                          gem: [Color(hex: "#F9A8D4"), Color(hex: "#DB2777"), Color(hex: "#5C0B44")],
-                         action: Color(hex: "#A855F7"))
+                         action: ModuleSkin.appAccent)
         case .systemJunk:
             return .init(deep: Color(hex: "#042616"), mid: Color(hex: "#12874C"),
                          glow: Color(hex: "#34D399"),
                          gem: [Color(hex: "#6EE7B7"), Color(hex: "#10B981"), Color(hex: "#05402A")],
-                         action: Color(hex: "#22D3EE"))
+                         action: ModuleSkin.appAccent)
         case .trashDownloads:
             return .init(deep: Color(hex: "#07173F"), mid: Color(hex: "#2563C9"),
                          glow: Color(hex: "#60A5FA"),
                          gem: [Color(hex: "#93C5FD"), Color(hex: "#3B82F6"), Color(hex: "#132B6B")],
-                         action: Color(hex: "#22D3EE"))
+                         action: ModuleSkin.appAccent)
         case .privacy:
             return .init(deep: Color(hex: "#1B0B45"), mid: Color(hex: "#6C2BD9"),
                          glow: Color(hex: "#A855F7"),
                          gem: [Color(hex: "#C084FC"), Color(hex: "#7C3AED"), Color(hex: "#3B0F80")],
-                         action: Color(hex: "#E935C1"))
+                         action: ModuleSkin.appAccent)
         case .uninstaller:
             return .init(deep: Color(hex: "#0C1440"), mid: Color(hex: "#3B4FD8"),
                          glow: Color(hex: "#818CF8"),
                          gem: [Color(hex: "#A5B4FC"), Color(hex: "#4F46E5"), Color(hex: "#1E1B6B")],
-                         action: Color(hex: "#E935C1"))
+                         action: ModuleSkin.appAccent)
         case .largeOld:
             return .init(deep: Color(hex: "#3A1204"), mid: Color(hex: "#C85A1B"),
                          glow: Color(hex: "#FB923C"),
                          gem: [Color(hex: "#FDBA74"), Color(hex: "#EA580C"), Color(hex: "#5A1E08")],
-                         action: Color(hex: "#FB7185"))
+                         action: ModuleSkin.appAccent)
         case .duplicates:
             return .init(deep: Color(hex: "#032B29"), mid: Color(hex: "#0E8F86"),
                          glow: Color(hex: "#2DD4BF"),
                          gem: [Color(hex: "#5EEAD4"), Color(hex: "#0D9488"), Color(hex: "#04403C")],
-                         action: Color(hex: "#22D3EE"))
+                         action: ModuleSkin.appAccent)
         }
     }
 
