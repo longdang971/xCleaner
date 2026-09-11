@@ -16,6 +16,55 @@ struct SystemJunkScanner: ModuleScanner {
          .init(id: "misc", title: "Trạng thái cửa sổ", icon: "macwindow")]
     }
 
+    /// Tên những thư mục con trong Application Support mà app dùng làm bộ nhớ đệm.
+    /// Ứng dụng dựng trên Electron (VS Code, Slack, Discord, Spotify…) để cache ở đây chứ
+    /// không phải ~/Library/Caches, nên chỉ quét Caches là bỏ sót hẳn một mảng lớn.
+    static let appSupportCacheNames: Set<String> = [
+        "Cache", "Caches", "caches", "Code Cache", "GPUCache", "CachedData",
+        "CachedProfilesData", "CachedConfigurations", "CachedExtensions", "CachedExtensionVSIXs",
+        "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "ShaderCache", "GrShaderCache",
+        "Service Worker", "component_crx_cache", "blob_storage", "Crashpad"
+    ]
+
+    /// Bộ nhớ đệm nằm rải trong Application Support và Group Containers.
+    /// Chỉ lấy đúng thư mục đệm, tuyệt đối không đụng thư mục dữ liệu của app.
+    func scatteredCaches(cancel: CancelToken,
+                         found: ((String, Int64) -> Void)? = nil) -> [CleanItem] {
+        var result: [CleanItem] = []
+
+        for appDir in FileUtils.children(of: FileUtils.homePath("Library/Application Support")) {
+            if cancel.isCancelled { break }
+            guard FileUtils.isDirectory(appDir) else { continue }
+            let appName = appDir.lastPathComponent
+            for child in FileUtils.children(of: appDir) {
+                guard Self.appSupportCacheNames.contains(child.lastPathComponent) else { continue }
+                if let item = makeItem(child,
+                                       name: "\(prettyName(appName)) · \(child.lastPathComponent)",
+                                       detail: FileUtils.prettyPath(child),
+                                       emptyContentsOnly: true,
+                                       cancel: cancel) {
+                    found?(item.name, item.size)
+                    result.append(item)
+                }
+            }
+        }
+
+        for group in FileUtils.children(of: FileUtils.homePath("Library/Group Containers")) {
+            if cancel.isCancelled { break }
+            let caches = group.appendingPathComponent("Library/Caches")
+            if let item = makeItem(caches,
+                                   name: "\(prettyName(group.lastPathComponent)) · Caches",
+                                   detail: FileUtils.prettyPath(caches),
+                                   emptyContentsOnly: true,
+                                   cancel: cancel) {
+                found?(item.name, item.size)
+                result.append(item)
+            }
+        }
+
+        return result
+    }
+
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var groups: [CleanGroup] = []
         var found: Int64 = 0
@@ -42,6 +91,8 @@ struct SystemJunkScanner: ModuleScanner {
                 let c = item.url.appendingPathComponent("Data/Library/Caches")
                 return makeItem(c, name: item.name + " (container)", cancel: cancel)
             })
+        userCache += scatteredCaches(cancel: cancel, found: { stage.found($0, $1) })
+        userCache.sort { $0.size > $1.size }
         found += userCache.reduce(0) { $0 + $1.size }
         if !userCache.isEmpty {
             groups.append(CleanGroup(id: "user-cache", title: "Bộ nhớ đệm ứng dụng",

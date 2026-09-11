@@ -21,6 +21,7 @@ enum SelfTest {
         testSizeCalculation()
         testSelectionMemory()
         testUninstaller()
+        testScatteredCaches()
         testDuplicates()
         testLargeOld()
         print("=== \(passed) đạt, \(failed) hỏng ===")
@@ -301,6 +302,43 @@ enum SelfTest {
         check("app đã biến mất", !FileUtils.exists(appURL))
         check("tệp còn sót đã sạch", expected.allSatisfy { !FileUtils.exists($0) })
         check("mồi nhử vẫn còn nguyên", decoys.allSatisfy { FileUtils.exists($0) })
+    }
+
+    // MARK: Bộ nhớ đệm nằm rải
+
+    private static func testScatteredCaches() {
+        print("[ScatteredCaches] cache ngoài ~/Library/Caches")
+        let fm = FileManager.default
+        let appDir = FileUtils.homePath("Application Support/XCleanerSelfTestApp")
+        let realAppDir = FileUtils.homePath("Library/Application Support/XCleanerSelfTestApp")
+        _ = appDir
+        let groupDir = FileUtils.homePath("Library/Group Containers/group.xcleaner.selftest")
+
+        let cacheDirs = [realAppDir.appendingPathComponent("Cache"),
+                         realAppDir.appendingPathComponent("Code Cache"),
+                         realAppDir.appendingPathComponent("CachedData"),
+                         groupDir.appendingPathComponent("Library/Caches")]
+        let dataDir = realAppDir.appendingPathComponent("User")   // dữ liệu thật, không được đụng
+
+        for d in cacheDirs + [dataDir] {
+            try? fm.createDirectory(at: d, withIntermediateDirectories: true)
+            fm.createFile(atPath: d.appendingPathComponent("x.bin").path,
+                          contents: Data(repeating: 7, count: 64 * 1024))
+        }
+        defer {
+            try? fm.removeItem(at: realAppDir)
+            try? fm.removeItem(at: groupDir)
+        }
+
+        let items = SystemJunkScanner().scatteredCaches(cancel: CancelToken())
+        let paths = Set(items.map(\.url.path))
+        for d in cacheDirs {
+            check("tìm ra \(d.lastPathComponent) của app", paths.contains(d.path))
+        }
+        check("không đụng thư mục dữ liệu của app", !paths.contains(dataDir.path))
+        check("chỉ dọn ruột, giữ lại thư mục",
+              items.filter { cacheDirs.map(\.path).contains($0.url.path) }
+                   .allSatisfy(\.emptyContentsOnly))
     }
 
     // MARK: Tệp trùng lặp
