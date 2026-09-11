@@ -32,6 +32,13 @@ final class ProgressThrottle {
     }
 }
 
+/// Ứng dụng đang mở mà thao tác sắp tới sẽ đụng tới — chờ người dùng quyết định.
+struct PendingQuit: Identifiable, Equatable {
+    let id = UUID()
+    let bundleID: String
+    let name: String
+}
+
 // MARK: - Kho kết quả dạng nhóm
 
 @MainActor
@@ -58,12 +65,6 @@ final class ScanStore: ObservableObject {
     /// Những mục vừa tìm thấy ở chặng đang chạy, mới nhất ở cuối.
     @Published var found: [CleanedEntry] = []
 
-    /// Ứng dụng đang mở mà lần dọn này sẽ đụng tới — chờ người dùng quyết định.
-    struct PendingQuit: Identifiable, Equatable {
-        let id = UUID()
-        let bundleID: String
-        let name: String
-    }
     @Published var pendingQuit: PendingQuit?
     private var quitQueue: [PendingQuit] = []
     private var pendingCleanGroups: [CleanGroup] = []
@@ -572,7 +573,32 @@ final class UninstallStore: ObservableObject {
         leftovers[i].isSelected.toggle()
     }
 
+    @Published var pendingQuit: PendingQuit?
+
     func uninstall() {
+        guard let app = selectedApp, leftovers.contains(where: \.isSelected) else { return }
+        // Gỡ một ứng dụng đang chạy thì nó còn ghi lại tuỳ chọn lúc thoát, và tệp vừa xoá
+        // quay về như chưa có chuyện gì.
+        if FileUtils.isRunning(bundleID: app.id) {
+            pendingQuit = PendingQuit(bundleID: app.id, name: app.name)
+            return
+        }
+        performUninstall()
+    }
+
+    func quitPendingApp() {
+        guard let pending = pendingQuit else { return }
+        NSRunningApplication.runningApplications(withBundleIdentifier: pending.bundleID)
+            .forEach { $0.terminate() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            self?.pendingQuit = nil
+            self?.performUninstall()
+        }
+    }
+
+    func cancelPendingQuit() { pendingQuit = nil }
+
+    private func performUninstall() {
         let items = leftovers.filter(\.isSelected)
         guard !items.isEmpty, let app = selectedApp else { return }
         isRemoving = true

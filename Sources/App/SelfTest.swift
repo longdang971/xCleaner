@@ -19,6 +19,7 @@ enum SelfTest {
         testEmptyContentsOnly()
         testSizeCalculation()
         testSelectionMemory()
+        testUninstaller()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
     }
@@ -199,6 +200,104 @@ enum SelfTest {
         memory.forgetAll()
         if let saved { UserDefaults.standard.set(saved, forKey: "selectionOverrides.v2") }
         try? FileManager.default.removeItem(at: sandbox)
+    }
+
+    // MARK: Gỡ ứng dụng
+
+    /// Dựng một app giả trong ~/Applications cùng đủ loại tệp nó "để lại", rồi kiểm tra
+    /// bộ dò có tìm đúng, có bỏ sót, và quan trọng nhất là có vơ nhầm của app khác không.
+    private static func testUninstaller() {
+        print("[Uninstaller] tìm tệp còn sót")
+        let fm = FileManager.default
+        let bundleID = "com.xcleaner.selftest.fakeapp"
+        let appName = "XCleanerFakeApp"
+        let appURL = FileUtils.homePath("Applications/\(appName).app")
+
+        // App giả: chỉ cần Info.plist hợp lệ là Bundle đọc được
+        try? fm.createDirectory(at: appURL.appendingPathComponent("Contents"),
+                                withIntermediateDirectories: true)
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict>
+        <key>CFBundleIdentifier</key><string>\(bundleID)</string>
+        <key>CFBundleName</key><string>\(appName)</string>
+        <key>CFBundleExecutable</key><string>\(appName)</string>
+        </dict></plist>
+        """
+        try? plist.write(to: appURL.appendingPathComponent("Contents/Info.plist"),
+                         atomically: true, encoding: .utf8)
+
+        // Tệp nó để lại ở những chỗ quen thuộc
+        var expected: [URL] = [appURL]
+        let leftovers: [(String, String)] = [
+            ("Library/Caches", bundleID),
+            ("Library/Preferences", "\(bundleID).plist"),
+            ("Library/Application Support", appName),
+            ("Library/Logs", bundleID),
+            ("Library/Saved Application State", "\(bundleID).savedState"),
+            ("Library/HTTPStorages", bundleID),
+            ("Library/LaunchAgents", "\(bundleID).plist")
+        ]
+        for (dir, name) in leftovers {
+            let parent = FileUtils.homePath(dir)
+            try? fm.createDirectory(at: parent, withIntermediateDirectories: true)
+            let url = parent.appendingPathComponent(name)
+            if name.hasSuffix(".plist") {
+                fm.createFile(atPath: url.path, contents: Data(repeating: 0x41, count: 2048))
+            } else {
+                try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+                fm.createFile(atPath: url.appendingPathComponent("data.bin").path,
+                              contents: Data(repeating: 0x42, count: 4096))
+            }
+            expected.append(url)
+        }
+
+        // Mồi nhử: tên gần giống nhưng của app khác, không được đụng vào
+        let decoyNames = ["\(bundleID)extra", "\(appName)Helper", "com.other.app"]
+        var decoys: [URL] = []
+        for name in decoyNames {
+            let url = FileUtils.homePath("Library/Caches").appendingPathComponent(name)
+            try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+            fm.createFile(atPath: url.appendingPathComponent("x.bin").path,
+                          contents: Data(repeating: 0x43, count: 1024))
+            decoys.append(url)
+        }
+
+        defer {
+            for url in expected + decoys { try? fm.removeItem(at: url) }
+        }
+
+        let scanner = UninstallScanner()
+        let token = CancelToken()
+        let apps = scanner.listApps(cancel: token) { _ in }
+        guard let app = apps.first(where: { $0.id == bundleID }) else {
+            check("thấy app giả trong danh sách", false, "(không thấy \(bundleID))")
+            return
+        }
+        check("thấy app giả trong danh sách", true)
+        check("đọc đúng tên app", app.name == appName, "(được \(app.name))")
+
+        let found = scanner.leftovers(for: app, cancel: token)
+        let paths = Set(found.map(\.url.path))
+        for url in expected {
+            check("tìm ra \(url.lastPathComponent)", paths.contains(url.path))
+        }
+        for url in decoys {
+            check("không vơ nhầm \(url.lastPathComponent)", !paths.contains(url.path))
+        }
+        check("mọi mục đều qua được hàng rào an toàn",
+              found.allSatisfy { SafetyGuard.isValid($0.url) })
+        check("không mục nào đòi quyền quản trị", found.allSatisfy { !$0.requiresAdmin })
+
+        // Gỡ thật rồi kiểm tra sạch sẽ
+        let outcome = Remover.perform(Remover.Request(items: found, moveToTrash: false,
+                                                      adminPrompt: "test")) { _, _ in }
+        check("gỡ không lỗi", outcome.failures.isEmpty,
+              "(\(outcome.failures.map(\.reason).joined(separator: "; ")))")
+        check("app đã biến mất", !FileUtils.exists(appURL))
+        check("tệp còn sót đã sạch", expected.allSatisfy { !FileUtils.exists($0) })
+        check("mồi nhử vẫn còn nguyên", decoys.allSatisfy { FileUtils.exists($0) })
     }
 
     private static func testSizeCalculation() {

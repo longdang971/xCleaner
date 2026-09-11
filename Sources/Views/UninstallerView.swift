@@ -11,6 +11,33 @@ struct UninstallerView: View {
     var body: some View {
         browser
             .onAppear { if store.apps.isEmpty && !store.isLoading { store.load() } }
+        .overlay {
+            if let pending = store.pendingQuit {
+                AppDialog(accent: ModuleSkin.appAccent,
+                          primaryTitle: "Thoát \(pending.name)",
+                          secondaryTitle: "Dừng",
+                          onPrimary: { store.quitPendingApp() },
+                          onSecondary: { store.cancelPendingQuit() }) {
+                    VStack(spacing: 14) {
+                        if let icon = AppIconProvider.icon(forBundleID: pending.bundleID) {
+                            Image(nsImage: icon)
+                                .resizable().interpolation(.high)
+                                .frame(width: 62, height: 62)
+                                .shadow(color: .black.opacity(0.4), radius: 12, y: 5)
+                        }
+                        Text("\(pending.name) đang mở")
+                            .font(.system(size: 19, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Thoát ứng dụng rồi xCleaner gỡ tiếp. Nếu để nguyên, app sẽ ghi lại tuỳ chọn lúc thoát và một phần tệp vừa xoá quay trở lại.")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Palette.textSecond)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .animation(Motion.standard, value: store.pendingQuit)
         .confirmationDialog("Gỡ \(store.selectedApp?.name ?? "")?",
                             isPresented: $confirming, titleVisibility: .visible) {
             Button("Gỡ ứng dụng", role: .destructive) { store.uninstall() }
