@@ -2,10 +2,18 @@ import SwiftUI
 import AppKit
 
 /// Màn hình dùng chung cho Quét thông minh, Rác hệ thống, Thùng rác & Tải về, Riêng tư.
+///
+/// Ba chặng: màn khởi đầu (khối 3D + nút tròn) → lưới thẻ tóm tắt → danh sách chi tiết của
+/// một nhóm khi bấm "Xem". Cách chia này giữ màn kết quả luôn gọn dù có hàng nghìn tệp.
 struct GroupedModuleView: View {
     @ObservedObject var store: ScanStore
+    let module: CleanModule
     @EnvironmentObject private var settings: AppSettings
+
     @State private var confirming = false
+    @State private var reviewing: String?
+
+    private var skin: ModuleSkin { ModuleSkin.skin(for: module) }
 
     var body: some View {
         ZStack {
@@ -13,20 +21,46 @@ struct GroupedModuleView: View {
             case .idle, .scanning:
                 heroScreen
             case .results, .cleaning, .done:
-                resultsScreen
+                if let id = reviewing, let group = store.groups.first(where: { $0.id == id }) {
+                    GroupDetailView(group: group,
+                                    skin: skin,
+                                    totalSelected: store.totalSelected,
+                                    onBack: { withAnimation(Motion.standard) { reviewing = nil } },
+                                    onToggleGroup: { store.toggleGroup(group.id) },
+                                    onToggleItem: { store.toggleItem(groupID: group.id, itemID: $0) },
+                                    onQuitApp: { store.quitApp(groupID: group.id) },
+                                    onClean: {
+                                        if settings.confirmBeforeClean { confirming = true }
+                                        else { store.clean() }
+                                    })
+                    .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                            removal: .opacity))
+                } else {
+                    resultsScreen
+                        .transition(.opacity)
+                }
             }
 
             if store.phase == .cleaning || store.phase == .done {
-                CleanOverlay(store: store)
-                    .transition(.opacity)
-                    .zIndex(10)
+                CleanOverlay(store: store, skin: skin).transition(.opacity).zIndex(10)
             }
         }
         .animation(Motion.standard, value: store.phase)
-        .onReceive(NotificationCenter.default.publisher(for: .xcRescan)) { _ in store.scan() }
+        .onReceive(NotificationCenter.default.publisher(for: .xcRescan)) { _ in
+            reviewing = nil
+            store.scan()
+        }
+        .onChange(of: store.phase) { _ in
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["XCLEANER_REVIEW"] == "1",
+               store.phase == .results, reviewing == nil {
+                reviewing = store.groups.first?.id
+            }
+            #endif
+        }
         .confirmationDialog("Dọn \(Fmt.size(store.totalSelected))?",
                             isPresented: $confirming, titleVisibility: .visible) {
-            Button("Dọn ngay", role: .destructive) { store.clean() }
+            Button("Dọn ngay", role: .destructive) { reviewing = nil; store.clean() }
             Button("Huỷ", role: .cancel) { }
         } message: {
             Text(confirmMessage)
@@ -42,271 +76,268 @@ struct GroupedModuleView: View {
         return s
     }
 
-    // MARK: - Màn hình khởi đầu
+    // MARK: - Màn khởi đầu
 
     private var heroScreen: some View {
         VStack(spacing: 0) {
-            PageHeader(title: store.module.title, subtitle: store.module.subtitle)
-                .padding(.horizontal, Metrics.contentPadding)
-                .padding(.top, 34)
-
             Spacer()
 
-            ScanRing(mode: store.ringMode,
-                     bytes: store.liveBytes,
-                     caption: store.phase == .scanning
-                        ? (store.statusText.isEmpty ? "Đang quét…" : store.statusText)
-                        : "Sẵn sàng")
+            if store.phase == .scanning {
+                ScanRing(mode: store.ringMode, bytes: store.liveBytes,
+                         caption: store.statusText.isEmpty ? "Đang quét…" : store.statusText,
+                         accent: skin.glow)
+                    .padding(.bottom, 6)
+                PillButton(title: "Dừng lại", systemImage: "stop.fill") { store.cancelScan() }
+            } else {
+                GemView(symbol: module.icon, colors: skin.gem, size: 148)
+                    .padding(.bottom, 18)
 
-            VStack(spacing: 10) {
-                if store.phase == .scanning {
-                    SecondaryButton(title: "Dừng lại", systemImage: "stop.fill") { store.cancelScan() }
-                } else {
-                    PrimaryButton(title: "Bắt đầu quét", systemImage: "sparkles") { store.scan() }
-                    Text(hint)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(Palette.textTertiary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 420)
+                HeroHeadline(title: module.title, subtitle: hint) {
+                    EmptyView()
                 }
+                .padding(.bottom, 26)
+
+                CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
             }
-            .padding(.top, -18)
 
             Spacer()
-            Spacer().frame(height: 40)
+            Spacer().frame(height: 30)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var hint: String {
-        switch store.module {
+        switch module {
         case .smartScan:
-            return "Quét bộ nhớ đệm, nhật ký, báo cáo sự cố và Thùng rác. Mọi mục ở đây đều an toàn để xoá."
+            return "Bộ nhớ đệm, nhật ký, báo cáo sự cố và Thùng rác.\nMọi mục tìm thấy ở đây đều an toàn để xoá."
         case .systemJunk:
-            return "Bao gồm cả /Library — những mục đó sẽ cần mật khẩu quản trị khi dọn."
+            return "Gồm cả /Library — những mục đó sẽ cần mật khẩu quản trị khi dọn."
         case .privacy:
-            return "Hãy đóng trình duyệt trước khi dọn để dữ liệu không bị ghi lại ngay sau đó."
+            return "Cookie, lịch sử và bộ nhớ đệm của mọi trình duyệt trên máy.\nHãy thoát trình duyệt trước khi dọn."
         case .trashDownloads:
-            return "Xem qua danh sách trước khi dọn — trong đây có tệp cá nhân của bạn."
+            return "Thùng rác trên mọi ổ đĩa, bộ cài cũ và tệp tải về lâu ngày.\nXem qua danh sách trước khi dọn."
         default:
             return ""
         }
     }
 
-    // MARK: - Màn hình kết quả
+    // MARK: - Lưới thẻ tóm tắt
 
     private var resultsScreen: some View {
         VStack(spacing: 0) {
-            PageHeader(title: store.module.title, subtitle: store.module.subtitle) {
+            HeroHeadline(title: store.groups.isEmpty
+                            ? "Không còn gì để dọn"
+                            : "Tìm thấy \(Fmt.size(store.totalFound)) có thể dọn",
+                         subtitle: store.groups.isEmpty
+                            ? "Thử lại sau vài ngày nữa nhé."
+                            : "Đã chọn sẵn \(Fmt.size(store.totalSelected)) trong \(store.selectedItems.count) mục.") {
                 HStack(spacing: 8) {
-                    SecondaryButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
+                    PillButton(title: "Chọn tất cả") {
+                        withAnimation(Motion.snappy) { store.selectAll(true) }
+                    }
+                    PillButton(title: "Bỏ chọn") {
+                        withAnimation(Motion.snappy) { store.selectAll(false) }
+                    }
+                    PillButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
                 }
             }
-            .padding(.horizontal, Metrics.contentPadding)
-            .padding(.top, 34)
-            .padding(.bottom, 18)
-
-            summaryBar
-                .padding(.horizontal, Metrics.contentPadding)
-                .padding(.bottom, 14)
+            .padding(.top, 6)
+            .padding(.bottom, 22)
 
             if store.groups.isEmpty {
                 EmptyStateView(icon: "checkmark.seal",
-                               title: "Sạch sẽ rồi",
-                               message: "Không còn gì để dọn ở mục này. Thử lại sau vài ngày nữa nhé.")
+                               title: "Máy đang sạch",
+                               message: "Không tìm thấy gì ở mục này.",
+                               gem: skin.gem)
             } else {
                 ZStack(alignment: .bottom) {
                     ScrollView {
-                        LazyVStack(spacing: 10) {
-                            ForEach(store.groups) { group in
-                                GroupCard(group: group,
-                                          onToggleGroup: { store.toggleGroup(group.id) },
-                                          onToggleExpand: { store.toggleExpanded(group.id) },
-                                          onToggleItem: { store.toggleItem(groupID: group.id, itemID: $0) })
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 310), spacing: 14)],
+                                  spacing: 14) {
+                            ForEach(Array(store.groups.enumerated()), id: \.element.id) { idx, group in
+                                GroupTile(group: group, gem: TileGems.gem(for: idx),
+                                          onToggle: { store.toggleGroup(group.id) },
+                                          onReview: {
+                                              withAnimation(Motion.standard) { reviewing = group.id }
+                                          },
+                                          onQuitApp: { store.quitApp(groupID: group.id) })
                             }
                         }
                         .padding(.horizontal, Metrics.contentPadding)
-                        .padding(.bottom, 104)
+                        .padding(.bottom, 132)
                     }
-                    .scrollIndicators(.automatic)
+                    .scrollIndicators(.never)
+
                     BottomFade()
                 }
             }
         }
-        .overlay(alignment: .bottom) { footer }
-    }
-
-    private var summaryBar: some View {
-        HStack(spacing: 18) {
-            MiniRing(fraction: store.totalFound > 0
-                     ? Double(store.totalSelected) / Double(store.totalFound) : 0)
-            stat(title: "Tìm thấy", value: Fmt.size(store.totalFound), color: Palette.textPrimary)
-            Divider().frame(height: 26).overlay(Palette.hairline)
-            stat(title: "Đã chọn", value: Fmt.size(store.totalSelected), color: Palette.accent)
-            Divider().frame(height: 26).overlay(Palette.hairline)
-            stat(title: "Số mục", value: "\(store.selectedItems.count)", color: Palette.textPrimary)
-
-            Spacer()
-
-            if store.needsAdmin { AdminBadge() }
-
-            Button("Chọn tất cả") { withAnimation(Motion.snappy) { store.selectAll(true) } }
-                .buttonStyle(.link).font(.system(size: 11.5))
-            Button("Bỏ chọn") { withAnimation(Motion.snappy) { store.selectAll(false) } }
-                .buttonStyle(.link).font(.system(size: 11.5))
+        .overlay(alignment: .bottom) {
+            if !store.groups.isEmpty { cleanButton }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .cardBackground()
     }
 
-    private func stat(title: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title).font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(Palette.textTertiary)
-            Text(value).font(.system(size: 16, weight: .semibold, design: .rounded))
-                .foregroundStyle(color)
+    private var cleanButton: some View {
+        VStack(spacing: 8) {
+            Text(store.totalSelected > 0
+                 ? "Sẽ giải phóng \(Fmt.size(store.totalSelected))"
+                 : "Chưa chọn mục nào")
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(Palette.textSecond)
                 .contentTransition(.numericText())
-                .animation(Motion.gentle, value: value)
-        }
-    }
 
-    private var footer: some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(store.totalSelected > 0
-                     ? "Sẽ giải phóng \(Fmt.size(store.totalSelected))"
-                     : "Chưa chọn mục nào")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Palette.textPrimary)
-                Text(settings.moveToTrash ? "Chuyển vào Thùng rác" : "Xoá vĩnh viễn")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Palette.textTertiary)
-            }
-            Spacer()
-            PrimaryButton(title: "Dọn ngay", systemImage: "sparkles",
-                          isEnabled: store.totalSelected > 0) {
+            CircleActionButton(title: "Dọn", accent: skin.action,
+                               isEnabled: store.totalSelected > 0) {
                 if settings.confirmBeforeClean { confirming = true } else { store.clean() }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Palette.surface)
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Palette.hairline, lineWidth: 1))
-                .shadow(color: .black.opacity(0.14), radius: 20, y: 6)
-        )
-        .padding(.horizontal, Metrics.contentPadding)
         .padding(.bottom, 18)
-        .opacity(store.groups.isEmpty ? 0 : 1)
-        .animation(Motion.standard, value: store.groups.isEmpty)
+        .animation(Motion.gentle, value: store.totalSelected)
     }
 }
 
-// MARK: - Thẻ nhóm
+// MARK: - Thẻ tóm tắt một nhóm
 
-struct GroupCard: View {
+struct GroupTile: View {
     let group: CleanGroup
-    var onToggleGroup: () -> Void
-    var onToggleExpand: () -> Void
-    var onToggleItem: (UUID) -> Void
-    var onQuitApp: (() -> Void)? = nil
+    let gem: [Color]
+    var onToggle: () -> Void
+    var onReview: () -> Void
+    var onQuitApp: (() -> Void)?
 
     @State private var hovering = false
-    private let visibleLimit = 120
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                TriStateBox(state: group.selection, action: onToggle)
+                Text(group.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+            }
+
+            Spacer(minLength: 10)
+
+            Text(Fmt.size(group.selectedSize))
+                .font(.cardNumber)
+                .foregroundStyle(.white)
+                .contentTransition(.numericText())
+
+            Text("\(group.items.count) mục · \(group.subtitle)")
+                .font(.system(size: 11))
+                .foregroundStyle(Palette.textSecond)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 1)
+
+            HStack(spacing: 6) {
+                if group.safety != .safe { SafetyBadge(level: group.safety) }
+                if group.items.contains(where: \.requiresAdmin) { AdminBadge() }
+                Spacer(minLength: 4)
+                if group.runningBundleID != nil, let onQuitApp {
+                    PillButton(title: "Thoát app", kind: .warning, action: onQuitApp)
+                }
+                PillButton(title: "Xem", kind: hovering ? .solid : .glass, action: onReview)
+            }
+            .padding(.top, 12)
+        }
+        .padding(16)
+        .frame(height: 168, alignment: .topLeading)
+        .glass(strength: hovering ? Palette.glassStrong : Palette.glass)
+        .overlay(alignment: .topTrailing) {
+            // Khối 3D nhô một phần ra khỏi mép thẻ — nó phải nằm trên nền kính, không bị cắt.
+            GemView(symbol: group.icon, colors: gem, size: 66, floating: false)
+                .offset(x: 14, y: -14)
+                .allowsHitTesting(false)
+        }
+        .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
+        .onTapGesture(perform: onReview)
+    }
+}
+
+// MARK: - Danh sách chi tiết của một nhóm
+
+struct GroupDetailView: View {
+    let group: CleanGroup
+    let skin: ModuleSkin
+    let totalSelected: Int64
+    var onBack: () -> Void
+    var onToggleGroup: () -> Void
+    var onToggleItem: (UUID) -> Void
+    var onQuitApp: () -> Void
+    var onClean: () -> Void
+
+    private let visibleLimit = 300
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            if group.isExpanded {
-                Divider().overlay(Palette.hairline)
-                itemList
+            HStack(spacing: 10) {
+                PillButton(title: "Quay lại", systemImage: "chevron.left", action: onBack)
+                Spacer()
+                Text(group.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                Spacer()
+                Text("\(Fmt.size(group.selectedSize)) / \(Fmt.size(group.totalSize))")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Palette.textSecond)
+                    .contentTransition(.numericText())
             }
-        }
-        .cardBackground()
-    }
+            .padding(.horizontal, Metrics.contentPadding)
+            .padding(.bottom, 12)
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            TriStateBox(state: group.selection, action: onToggleGroup)
-
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Palette.accent.opacity(0.12))
-                    .frame(width: 30, height: 30)
-                Image(systemName: group.icon)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Palette.accent)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(group.title).font(.cardTitle).foregroundStyle(Palette.textPrimary)
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    TriStateBox(state: group.selection, action: onToggleGroup)
+                    Text(group.subtitle).font(.system(size: 11.5)).foregroundStyle(Palette.textSecond)
+                    Spacer()
+                    if group.runningBundleID != nil {
+                        PillButton(title: "Thoát app", kind: .warning, action: onQuitApp)
+                    }
                     if group.safety != .safe { SafetyBadge(level: group.safety) }
                     if group.items.contains(where: \.requiresAdmin) { AdminBadge() }
                 }
-                Text(group.subtitle).font(.system(size: 11))
-                    .foregroundStyle(Palette.textSecondary)
-                    .lineLimit(1)
-            }
+                .padding(.horizontal, 16)
+                .frame(height: 44)
 
-            Spacer(minLength: 8)
+                Divider().overlay(Color.white.opacity(0.12))
 
-            if group.runningBundleID != nil, let onQuitApp {
-                Button(action: onQuitApp) {
-                    Text("Thoát app")
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(Palette.warning)
-                        .padding(.horizontal, 9).frame(height: 22)
-                        .background(Capsule().fill(Palette.warning.opacity(0.14)))
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(group.items.prefix(visibleLimit)) { item in
+                            ItemRow(item: item) { onToggleItem(item.id) }
+                        }
+                        if group.items.count > visibleLimit {
+                            Text("… và \(group.items.count - visibleLimit) mục nữa (đã tính vào tổng)")
+                                .font(.system(size: 11)).foregroundStyle(Palette.textFaint)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 16).padding(.vertical, 10)
+                        }
+                    }
+                    .padding(.vertical, 4)
                 }
-                .buttonStyle(.plain)
-                .help("Thoát ứng dụng để dữ liệu không bị ghi lại ngay sau khi dọn")
-            }
+                .scrollIndicators(.never)
 
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(Fmt.size(group.selectedSize))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(group.selectedSize > 0 ? Palette.textPrimary : Palette.textTertiary)
-                    .contentTransition(.numericText())
-                Text("\(group.items.count) mục").font(.system(size: 10))
-                    .foregroundStyle(Palette.textTertiary)
-            }
+                Divider().overlay(Color.white.opacity(0.12))
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Palette.textTertiary)
-                .rotationEffect(.degrees(group.isExpanded ? 90 : 0))
-                .animation(Motion.snappy, value: group.isExpanded)
-                .frame(width: 14)
+                HStack {
+                    Text("\(group.selectedCount)/\(group.items.count) mục đã chọn ở nhóm này")
+                        .font(.system(size: 11.5)).foregroundStyle(Palette.textSecond)
+                    Spacer()
+                    PillButton(title: "Dọn \(Fmt.size(totalSelected))", systemImage: "sparkles",
+                               kind: .solid, isEnabled: totalSelected > 0, action: onClean)
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 50)
+            }
+            .glass()
+            .padding(.horizontal, Metrics.contentPadding)
+            .padding(.bottom, Metrics.contentPadding)
         }
-        .padding(14)
-        .background(hovering ? Palette.textPrimary.opacity(0.03) : .clear)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onToggleExpand)
-        .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
-    }
-
-    private var itemList: some View {
-        LazyVStack(spacing: 0) {
-            ForEach(group.items.prefix(visibleLimit)) { item in
-                ItemRow(item: item) { onToggleItem(item.id) }
-            }
-            if group.items.count > visibleLimit {
-                Text("… và \(group.items.count - visibleLimit) mục nữa (đã tính vào tổng)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Palette.textTertiary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-            }
-        }
-        .padding(.vertical, 4)
     }
 }
 
-// MARK: - Dòng mục
+// MARK: - Một dòng
 
 struct ItemRow: View {
     let item: CleanItem
@@ -315,21 +346,18 @@ struct ItemRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            CheckBox(isOn: item.isSelected, action: onToggle)
-                .padding(.leading, 16)
+            CheckBox(isOn: item.isSelected, action: onToggle).padding(.leading, 16)
 
-            Image(systemName: item.isDirectory ? "folder" : "doc")
+            Image(systemName: item.isDirectory ? "folder.fill" : "doc.fill")
                 .font(.system(size: 11))
-                .foregroundStyle(Palette.textTertiary)
+                .foregroundStyle(Palette.textFaint)
                 .frame(width: 14)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.name).font(.rowTitle)
-                    .foregroundStyle(Palette.textPrimary)
+                Text(item.name).font(.rowTitle).foregroundStyle(.white)
                     .lineLimit(1).truncationMode(.middle)
                 if !item.detail.isEmpty {
-                    Text(item.detail).font(.rowDetail)
-                        .foregroundStyle(Palette.textTertiary)
+                    Text(item.detail).font(.rowDetail).foregroundStyle(Palette.textFaint)
                         .lineLimit(1).truncationMode(.middle)
                 }
             }
@@ -337,100 +365,100 @@ struct ItemRow: View {
             Spacer(minLength: 8)
 
             if item.requiresAdmin {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(Palette.warning)
+                Image(systemName: "lock.fill").font(.system(size: 9)).foregroundStyle(Palette.warning)
             }
 
-            if hovering {
-                Button {
-                    NSWorkspace.shared.activateFileViewerSelecting([item.url])
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.textSecondary)
-                }
-                .buttonStyle(.plain)
-                .help("Hiện trong Finder")
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+            } label: {
+                Image(systemName: "arrow.up.forward.app")
+                    .font(.system(size: 11))
+                    .foregroundStyle(hovering ? Palette.textSecond : .clear)
             }
+            .buttonStyle(.plain).help("Hiện trong Finder")
 
             Text(Fmt.size(item.size))
                 .font(.system(size: 11.5, design: .rounded))
-                .foregroundStyle(Palette.textSecondary)
+                .foregroundStyle(Palette.textSecond)
                 .frame(width: 74, alignment: .trailing)
                 .padding(.trailing, 16)
         }
         .frame(height: 34)
-        .background(hovering ? Palette.accent.opacity(0.06) : .clear)
+        .background(hovering ? Color.white.opacity(0.07) : .clear)
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
         .onHover { h in hovering = h }
     }
 }
 
-// MARK: - Lớp phủ khi dọn
+// MARK: - Lớp phủ lúc dọn
 
 struct CleanOverlay: View {
     @ObservedObject var store: ScanStore
+    let skin: ModuleSkin
 
     var body: some View {
         ZStack {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .ignoresSafeArea()
+            Rectangle().fill(.black.opacity(0.45)).ignoresSafeArea()
+            Rectangle().fill(.ultraThinMaterial).opacity(0.5).ignoresSafeArea()
 
-            VStack(spacing: 22) {
-                ScanRing(mode: store.ringMode,
-                         bytes: store.phase == .done ? (store.outcome?.freedBytes ?? 0) : store.totalSelected,
-                         caption: store.statusText,
-                         diameter: 190)
-
+            VStack(spacing: 20) {
                 if store.phase == .done, let o = store.outcome {
+                    GemView(symbol: o.wasCancelled && o.freedBytes == 0
+                            ? "exclamationmark" : "checkmark",
+                            colors: skin.gem, size: 116)
+
                     VStack(spacing: 6) {
                         Text(o.wasCancelled && o.freedBytes == 0
                              ? "Đã huỷ"
                              : "Đã giải phóng \(Fmt.size(o.freedBytes))")
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundStyle(Palette.textPrimary)
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundStyle(.white)
                         Text(summary(o))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Palette.textSecondary)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Palette.textSecond)
                             .multilineTextAlignment(.center)
-                            .frame(maxWidth: 420)
+                            .frame(maxWidth: 460)
                     }
 
                     if !o.failures.isEmpty {
-                        DisclosureGroup("\(o.failures.count) mục không xoá được") {
-                            ScrollView {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    ForEach(Array(o.failures.prefix(30).enumerated()), id: \.offset) { _, f in
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(FileUtils.prettyPath(f.url))
-                                                .font(.system(size: 11, weight: .medium))
-                                            Text(f.reason).font(.system(size: 10))
-                                                .foregroundStyle(Palette.textTertiary)
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                }
-                                .padding(8)
-                            }
-                            .frame(maxHeight: 150)
-                        }
-                        .font(.system(size: 11))
-                        .frame(width: 420)
-                        .padding(12)
-                        .cardBackground(radius: 10)
+                        failureList(o)
                     }
 
                     HStack(spacing: 10) {
-                        SecondaryButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
-                        PrimaryButton(title: "Xong", systemImage: "checkmark") { store.reset() }
+                        PillButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
+                        PillButton(title: "Xong", kind: .solid) { store.reset() }
                     }
+                } else {
+                    ScanRing(mode: store.ringMode, bytes: store.totalSelected,
+                             caption: store.statusText, diameter: 180, accent: skin.glow)
                 }
             }
             .padding(40)
         }
+    }
+
+    private func failureList(_ o: CleanOutcome) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("\(o.failures.count) mục không xoá được")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.warning)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(Array(o.failures.prefix(30).enumerated()), id: \.offset) { _, f in
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(FileUtils.prettyPath(f.url))
+                                .font(.system(size: 11, weight: .medium)).foregroundStyle(.white)
+                            Text(f.reason).font(.system(size: 10)).foregroundStyle(Palette.textFaint)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .frame(maxHeight: 140)
+        }
+        .padding(14)
+        .frame(width: 460)
+        .glass(radius: 14)
     }
 
     private func summary(_ o: CleanOutcome) -> String {

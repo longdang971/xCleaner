@@ -1,7 +1,26 @@
 # xCleaner
 
-Ứng dụng dọn dẹp macOS viết bằng Swift + SwiftUI, giao diện theo hướng CleanMyMac.
+Ứng dụng dọn dẹp macOS viết bằng Swift + SwiftUI.
 Không sandbox, không gửi dữ liệu ra ngoài, và **không cần Apple Developer ID**.
+
+## Ngôn ngữ thiết kế
+
+Học theo CleanMyMac 5 nhưng dựng lại hoàn toàn bằng SwiftUI, không dùng tệp ảnh nào:
+
+- **Nền gradient đậm phủ kín cửa sổ, mỗi mục một tông màu.** Người dùng nhận ra mình đang ở
+  đâu bằng màu trước cả khi đọc tiêu đề. Nền của mọi mục vẽ chồng lên nhau và chỉ đổi độ mờ
+  khi chuyển mục — gradient không nội suy trực tiếp được, còn đổi opacity thì chạy trên GPU.
+- **Sidebar 72px chỉ có icon, rê chuột vào thì nở ra 206px kèm tên.** Nó đè lên nội dung chứ
+  không đẩy, nên bố cục không giật. Nền phải **đục** khi nở: material của SwiftUI không làm mờ
+  view anh em cùng cửa sổ, để trong suốt là chữ bên dưới hiện xuyên qua.
+- **Thẻ kính mờ** (trắng 13%, viền trắng 17%, mép trên sáng hơn) nổi trên gradient.
+- **Khối 3D bóng** (`GemView`): squircle thật + gradient ba chặng + highlight vai trên trái +
+  ánh phản chiếu hắt ngược từ dưới + cạnh kính. Mỗi thẻ mượn một tông màu khác nhau.
+- **Nút hành động tròn** dùng màu **kế cận** trên vòng màu, bão hoà hơn nền — không phải màu
+  đối lập: vàng trên teal đọc ra như một cảnh báo, còn magenta trên tím thì nổi mà vẫn hài hoà.
+  Màu phải đặc, pha trong suốt là nền phía sau làm nút xỉn đi ngay.
+- **Ba chặng thao tác**: màn khởi đầu (khối 3D + nút tròn) → lưới thẻ tóm tắt → danh sách chi
+  tiết khi bấm "Xem". Nhờ vậy màn kết quả luôn gọn dù nhóm có hàng nghìn tệp.
 
 ## Các mục
 
@@ -53,7 +72,8 @@ XCLEANER_SELFTEST=1 ./xCleaner.app/Contents/MacOS/xCleaner
 
 # Tự chụp cửa sổ (không cần cấp quyền Ghi màn hình cho Terminal)
 XCLEANER_SHOT=/tmp/a.png XCLEANER_SHOT_DELAY=5 XCLEANER_SHOT_QUIT=1 \
-XCLEANER_MODULE=privacy XCLEANER_SHOT_ACTION=scan XCLEANER_APPEARANCE=dark \
+XCLEANER_MODULE=privacy XCLEANER_SHOT_ACTION=scan \
+XCLEANER_SIDEBAR=expanded XCLEANER_REVIEW=1 \
   ./xCleaner.app/Contents/MacOS/xCleaner
 
 # Thử luồng xin quyền root mà không xoá gì

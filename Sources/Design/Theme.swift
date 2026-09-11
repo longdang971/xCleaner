@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Màu động theo giao diện sáng/tối
+// MARK: - Màu
 
 extension NSColor {
     convenience init(hex: String) {
@@ -27,50 +27,96 @@ extension NSColor {
 }
 
 extension Color {
-    /// Một màu duy nhất tự đổi giá trị khi người dùng chuyển sáng/tối — không cần `@Environment`.
-    static func adaptive(_ light: String, _ dark: String) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            return NSColor(hex: isDark ? dark : light)
-        })
+    init(hex: String) { self.init(nsColor: NSColor(hex: hex)) }
+}
+
+// MARK: - Bảng màu theo từng mục
+
+/// Mỗi mục có một tông màu riêng phủ kín cửa sổ. Người dùng nhận ra mình đang ở đâu
+/// bằng màu nền trước cả khi đọc tiêu đề.
+struct ModuleSkin {
+    let deep: Color      // góc tối
+    let mid: Color       // màu chủ đạo
+    let glow: Color      // điểm sáng
+    let gem: [Color]     // khối 3D
+    /// Màu nút hành động. Cố tình lệch tông khỏi nền: nút cùng màu nền sẽ chìm mất.
+    let action: Color
+
+    static func skin(for module: CleanModule) -> ModuleSkin {
+        switch module {
+        case .smartScan:
+            return .init(deep: Color(hex: "#1B0B45"), mid: Color(hex: "#6C2BD9"),
+                         glow: Color(hex: "#A855F7"),
+                         gem: [Color(hex: "#C084FC"), Color(hex: "#7C3AED"), Color(hex: "#3B0F80")],
+                         action: Color(hex: "#E935C1"))
+        case .systemJunk:
+            return .init(deep: Color(hex: "#042616"), mid: Color(hex: "#12874C"),
+                         glow: Color(hex: "#34D399"),
+                         gem: [Color(hex: "#6EE7B7"), Color(hex: "#10B981"), Color(hex: "#05402A")],
+                         action: Color(hex: "#22D3EE"))
+        case .trashDownloads:
+            return .init(deep: Color(hex: "#07173F"), mid: Color(hex: "#2563C9"),
+                         glow: Color(hex: "#60A5FA"),
+                         gem: [Color(hex: "#93C5FD"), Color(hex: "#3B82F6"), Color(hex: "#132B6B")],
+                         action: Color(hex: "#22D3EE"))
+        case .privacy:
+            return .init(deep: Color(hex: "#37062A"), mid: Color(hex: "#B31F86"),
+                         glow: Color(hex: "#F472B6"),
+                         gem: [Color(hex: "#F9A8D4"), Color(hex: "#DB2777"), Color(hex: "#5C0B44")],
+                         action: Color(hex: "#A855F7"))
+        case .uninstaller:
+            return .init(deep: Color(hex: "#0C1440"), mid: Color(hex: "#3B4FD8"),
+                         glow: Color(hex: "#818CF8"),
+                         gem: [Color(hex: "#A5B4FC"), Color(hex: "#4F46E5"), Color(hex: "#1E1B6B")],
+                         action: Color(hex: "#E935C1"))
+        case .largeOld:
+            return .init(deep: Color(hex: "#3A1204"), mid: Color(hex: "#C85A1B"),
+                         glow: Color(hex: "#FB923C"),
+                         gem: [Color(hex: "#FDBA74"), Color(hex: "#EA580C"), Color(hex: "#5A1E08")],
+                         action: Color(hex: "#FB7185"))
+        case .duplicates:
+            return .init(deep: Color(hex: "#032B29"), mid: Color(hex: "#0E8F86"),
+                         glow: Color(hex: "#2DD4BF"),
+                         gem: [Color(hex: "#5EEAD4"), Color(hex: "#0D9488"), Color(hex: "#04403C")],
+                         action: Color(hex: "#22D3EE"))
+        }
+    }
+
+    /// Nền cửa sổ: một lớp chéo đậm, một quầng sáng lệch về góc trên phải,
+    /// và một quầng tối ở đáy trái để khối nội dung nổi lên.
+    @ViewBuilder
+    var background: some View {
+        ZStack {
+            LinearGradient(colors: [mid, deep],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            RadialGradient(colors: [glow.opacity(0.55), .clear],
+                           center: UnitPoint(x: 0.86, y: 0.06),
+                           startRadius: 0, endRadius: 780)
+            RadialGradient(colors: [deep.opacity(0.85), .clear],
+                           center: UnitPoint(x: 0.02, y: 1.05),
+                           startRadius: 0, endRadius: 700)
+            LinearGradient(colors: [.black.opacity(0.28), .clear],
+                           startPoint: .bottom, endPoint: .center)
+        }
     }
 }
 
+// MARK: - Màu dùng chung trên nền tối
+
 enum Palette {
-    // Nền
-    static let canvas      = Color.adaptive("#F4F5F9", "#101219")
-    static let surface     = Color.adaptive("#FFFFFF", "#191C25")
-    static let surfaceAlt  = Color.adaptive("#F8F9FC", "#1F2330")
-    static let sidebar     = Color.adaptive("#EBECF2", "#0C0E14")
-    static let hairline    = Color.adaptive("#00000012", "#FFFFFF14")
+    static let text         = Color.white
+    static let textSecond   = Color.white.opacity(0.72)
+    static let textFaint    = Color.white.opacity(0.48)
 
-    // Chữ
-    static let textPrimary   = Color.adaptive("#14161C", "#F2F4FA")
-    static let textSecondary = Color.adaptive("#5C6070", "#9AA0B4")
-    static let textTertiary  = Color.adaptive("#8A8F9E", "#6B7186")
+    /// Thẻ kính: sáng mờ, viền mảnh, không đổ bóng cứng.
+    static let glass        = Color.white.opacity(0.13)
+    static let glassStrong  = Color.white.opacity(0.19)
+    static let glassLine    = Color.white.opacity(0.17)
+    static let glassHover   = Color.white.opacity(0.08)
 
-    // Nhấn
-    static let accent      = Color.adaptive("#4D6FF0", "#6D8BFF")
-    static let accentStart = Color.adaptive("#4C6FEF", "#5E7CF5")
-    static let accentEnd   = Color.adaptive("#9B5DE5", "#A472FF")
-
-    static let success     = Color.adaptive("#17B26A", "#32D583")
-    static let warning     = Color.adaptive("#DC8B12", "#FDB022")
-    static let danger      = Color.adaptive("#D92D20", "#F97066")
-
-    // Vòng quét
-    static let ringTrack = Color.adaptive("#E3E6F0", "#232735")
-
-    static var accentGradient: LinearGradient {
-        LinearGradient(colors: [accentStart, accentEnd],
-                       startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
-
-    static var heroGradient: LinearGradient {
-        LinearGradient(colors: [Color.adaptive("#3D5AF1", "#2B3A8F"),
-                                Color.adaptive("#7B4BE0", "#5B2E9E")],
-                       startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
+    static let success      = Color(hex: "#4ADE80")
+    static let warning      = Color(hex: "#FBBF24")
+    static let danger       = Color(hex: "#FB7185")
 
     static func safetyColor(_ level: SafetyLevel) -> Color {
         switch level {
@@ -82,84 +128,74 @@ enum Palette {
 }
 
 enum Metrics {
-    static let cardRadius: CGFloat = 14
-    static let rowRadius: CGFloat = 9
-    static let sidebarWidth: CGFloat = 232
-    static let contentPadding: CGFloat = 28
+    static let cardRadius: CGFloat = 20
+    static let rowRadius: CGFloat = 10
+    static let sidebarWidth: CGFloat = 72
+    static let sidebarExpanded: CGFloat = 206
+    static let contentPadding: CGFloat = 26
+    static let titleBarHeight: CGFloat = 46
 }
 
 enum Motion {
-    /// Dùng cho mọi thay đổi bố cục: đủ nhanh để không thấy chậm, đủ mềm để không giật.
-    static let standard = Animation.spring(response: 0.38, dampingFraction: 0.86)
+    static let standard = Animation.spring(response: 0.4, dampingFraction: 0.86)
     static let snappy   = Animation.spring(response: 0.26, dampingFraction: 0.9)
     static let gentle   = Animation.easeInOut(duration: 0.22)
+    static let skin     = Animation.easeInOut(duration: 0.5)
 }
-
-// MARK: - Kiểu chữ
 
 extension Font {
-    static let displayNumber = Font.system(size: 54, weight: .semibold, design: .rounded)
-    static let cardTitle     = Font.system(size: 14, weight: .semibold)
-    static let rowTitle      = Font.system(size: 13, weight: .medium)
-    static let rowDetail     = Font.system(size: 11, weight: .regular)
-    static let sectionTitle  = Font.system(size: 26, weight: .bold)
+    static let displayNumber = Font.system(size: 52, weight: .semibold, design: .rounded)
+    static let heroTitle     = Font.system(size: 23, weight: .semibold)
+    static let cardTitle     = Font.system(size: 15, weight: .semibold)
+    static let cardNumber    = Font.system(size: 26, weight: .semibold)
+    static let rowTitle      = Font.system(size: 12.5, weight: .medium)
+    static let rowDetail     = Font.system(size: 10.5)
 }
 
-// MARK: - Nền mờ kiểu macOS
+// MARK: - Thẻ kính
 
-struct VisualEffectBackground: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .sidebar
-    var blending: NSVisualEffectView.BlendingMode = .behindWindow
-    var emphasized: Bool = false
+struct GlassBackground: ViewModifier {
+    var radius: CGFloat = Metrics.cardRadius
+    var strength: Color = Palette.glass
 
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let v = NSVisualEffectView()
-        v.material = material
-        v.blendingMode = blending
-        v.state = .followsWindowActiveState
-        v.isEmphasized = emphasized
-        return v
-    }
-
-    func updateNSView(_ v: NSVisualEffectView, context: Context) {
-        v.material = material
-        v.blendingMode = blending
-        v.isEmphasized = emphasized
-    }
-}
-
-// MARK: - Thẻ
-
-struct Card<Content: View>: View {
-    var padding: CGFloat = 16
-    @ViewBuilder var content: Content
-
-    var body: some View {
+    func body(content: Content) -> some View {
         content
-            .padding(padding)
             .background(
-                RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                    .fill(Palette.surface)
+                ZStack {
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .fill(strength)
+                    // Mép trên sáng hơn một chút, như ánh sáng hắt vào cạnh kính.
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .fill(LinearGradient(colors: [.white.opacity(0.10), .clear],
+                                             startPoint: .top, endPoint: .center))
+                }
             )
             .overlay(
-                RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                    .strokeBorder(Palette.hairline, lineWidth: 1)
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(Palette.glassLine, lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
+            .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 8)
     }
 }
 
 extension View {
-    func cardBackground(radius: CGFloat = Metrics.cardRadius) -> some View {
-        self
-            .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Palette.surface))
-            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .strokeBorder(Palette.hairline, lineWidth: 1))
-            .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
+    func glass(radius: CGFloat = Metrics.cardRadius, strength: Color = Palette.glass) -> some View {
+        modifier(GlassBackground(radius: radius, strength: strength))
     }
+}
 
-    /// Ẩn/hiện mềm mà không làm nhảy bố cục.
-    func fadeIn(_ visible: Bool) -> some View {
-        opacity(visible ? 1 : 0).animation(Motion.gentle, value: visible)
-    }
+
+/// Mỗi thẻ kết quả mượn một tông màu khác nhau, giống lưới tile nhiều màu của CleanMyMac.
+enum TileGems {
+    static let sets: [[Color]] = [
+        [Color(hex: "#6EE7B7"), Color(hex: "#10B981"), Color(hex: "#05402A")],  // lục
+        [Color(hex: "#93C5FD"), Color(hex: "#3B82F6"), Color(hex: "#132B6B")],  // lam
+        [Color(hex: "#F9A8D4"), Color(hex: "#DB2777"), Color(hex: "#5C0B44")],  // hồng
+        [Color(hex: "#FDBA74"), Color(hex: "#EA580C"), Color(hex: "#5A1E08")],  // cam
+        [Color(hex: "#5EEAD4"), Color(hex: "#0D9488"), Color(hex: "#04403C")],  // teal
+        [Color(hex: "#C4B5FD"), Color(hex: "#7C3AED"), Color(hex: "#3B0F80")],  // tím
+        [Color(hex: "#FDE68A"), Color(hex: "#D97706"), Color(hex: "#4A2A03")]   // vàng
+    ]
+
+    static func gem(for index: Int) -> [Color] { sets[index % sets.count] }
 }

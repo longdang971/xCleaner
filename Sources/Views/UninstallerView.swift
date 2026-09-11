@@ -6,41 +6,16 @@ struct UninstallerView: View {
     @EnvironmentObject private var settings: AppSettings
     @State private var confirming = false
 
+    private let skin = ModuleSkin.skin(for: .uninstaller)
+
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title: "Gỡ ứng dụng",
-                       subtitle: "Xoá app cùng toàn bộ tệp nó để lại trong hệ thống") {
-                SecondaryButton(title: "Làm mới", systemImage: "arrow.clockwise") { store.load() }
-            }
-            .padding(.horizontal, Metrics.contentPadding)
-            .padding(.top, 34)
-            .padding(.bottom, 16)
-
-            HStack(spacing: 10) {
-                SearchField(placeholder: "Tìm ứng dụng", text: $store.search)
-                    .frame(width: 220)
-                Picker("", selection: $store.sort) {
-                    ForEach(UninstallStore.Sort.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.menu).frame(width: 150).labelsHidden()
-                Toggle("Hiện app hệ thống", isOn: $store.showSystemApps)
-                    .toggleStyle(.checkbox).font(.system(size: 11.5))
-                Spacer()
-                if store.isLoading {
-                    ProgressView().controlSize(.small)
-                    Text(store.statusText).font(.system(size: 11))
-                        .foregroundStyle(Palette.textTertiary)
-                        .lineLimit(1).frame(maxWidth: 200, alignment: .leading)
-                } else {
-                    Text(store.statusText).font(.system(size: 11))
-                        .foregroundStyle(Palette.textTertiary)
-                }
-            }
-            .padding(.horizontal, Metrics.contentPadding)
-            .padding(.bottom, 12)
+            toolbar
+                .padding(.horizontal, Metrics.contentPadding)
+                .padding(.bottom, 14)
 
             HStack(spacing: 14) {
-                appList.frame(width: 330)
+                appList.frame(width: 320)
                 detail
             }
             .padding(.horizontal, Metrics.contentPadding)
@@ -64,23 +39,58 @@ struct UninstallerView: View {
         return s
     }
 
-    // MARK: Danh sách app
+    private var toolbar: some View {
+        HStack(spacing: 10) {
+            SearchField(placeholder: "Tìm ứng dụng", text: $store.search).frame(width: 210)
+
+            Menu {
+                ForEach(UninstallStore.Sort.allCases) { s in
+                    Button(s.rawValue) { store.sort = s }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.up.arrow.down").font(.system(size: 10, weight: .semibold))
+                    Text(store.sort.rawValue).font(.system(size: 12, weight: .medium))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12).frame(height: 28)
+                .background(Capsule().fill(Color.white.opacity(0.14)))
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+
+            FilterChip(title: "App hệ thống", isOn: store.showSystemApps) {
+                withAnimation(Motion.snappy) { store.showSystemApps.toggle() }
+            }
+
+            Spacer()
+
+            if store.isLoading {
+                ProgressView().controlSize(.small).tint(.white)
+                Text(store.statusText).font(.system(size: 11)).foregroundStyle(Palette.textFaint)
+                    .lineLimit(1).frame(maxWidth: 220, alignment: .leading)
+            } else {
+                Text(store.statusText).font(.system(size: 11)).foregroundStyle(Palette.textFaint)
+                PillButton(title: "Làm mới", systemImage: "arrow.clockwise") { store.load() }
+            }
+        }
+    }
 
     private var appList: some View {
         ScrollView {
             LazyVStack(spacing: 2) {
                 ForEach(store.filteredApps) { app in
-                    AppRow(app: app, isSelected: store.selectedApp?.url == app.url) {
+                    AppRow(app: app, isSelected: store.selectedApp?.url == app.url, skin: skin) {
                         withAnimation(Motion.gentle) { store.select(app) }
                     }
                 }
             }
-            .padding(6)
+            .padding(7)
         }
-        .cardBackground()
+        .scrollIndicators(.never)
+        .glass()
     }
-
-    // MARK: Chi tiết
 
     @ViewBuilder
     private var detail: some View {
@@ -89,30 +99,29 @@ struct UninstallerView: View {
                 HStack(spacing: 14) {
                     AppIconView(url: app.url, size: 54)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(app.name).font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(Palette.textPrimary)
+                        Text(app.name).font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
                         Text(app.version.isEmpty ? app.id : "Phiên bản \(app.version) · \(app.id)")
-                            .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                            .font(.system(size: 11)).foregroundStyle(Palette.textSecond)
                             .lineLimit(1).truncationMode(.middle)
-                        HStack(spacing: 8) {
+                        HStack(spacing: 10) {
                             Label(Fmt.size(app.appSize), systemImage: "internaldrive")
                             if let d = app.lastUsed {
                                 Label("Dùng lần cuối \(Fmt.relativeAge(d))", systemImage: "clock")
                             }
                         }
-                        .font(.system(size: 10.5)).foregroundStyle(Palette.textTertiary)
+                        .font(.system(size: 10.5)).foregroundStyle(Palette.textFaint)
                     }
                     Spacer()
                 }
                 .padding(16)
 
-                Divider().overlay(Palette.hairline)
+                Divider().overlay(Color.white.opacity(0.12))
 
                 if store.isLoadingLeftovers {
                     VStack(spacing: 10) {
-                        ProgressView().controlSize(.small)
-                        Text("Đang tìm tệp còn sót…").font(.system(size: 12))
-                            .foregroundStyle(Palette.textSecondary)
+                        ProgressView().controlSize(.small).tint(.white)
+                        Text("Đang tìm tệp còn sót…")
+                            .font(.system(size: 12)).foregroundStyle(Palette.textSecond)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -124,40 +133,37 @@ struct UninstallerView: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .scrollIndicators(.never)
                 }
 
-                Divider().overlay(Palette.hairline)
+                Divider().overlay(Color.white.opacity(0.12))
 
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("\(store.leftovers.filter(\.isSelected).count)/\(store.leftovers.count) mục · \(Fmt.size(store.selectedLeftoverSize))")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Palette.textPrimary)
+                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
                         Text(settings.moveToTrash ? "Chuyển vào Thùng rác" : "Xoá vĩnh viễn")
-                            .font(.system(size: 10.5)).foregroundStyle(Palette.textTertiary)
+                            .font(.system(size: 10.5)).foregroundStyle(Palette.textFaint)
                     }
                     Spacer()
                     if store.isRemoving {
-                        ProgressView().controlSize(.small)
+                        ProgressView().controlSize(.small).tint(.white)
                     } else {
-                        PrimaryButton(title: "Gỡ ứng dụng", systemImage: "trash",
-                                      tint: LinearGradient(colors: [Palette.danger,
-                                                                    Palette.danger.opacity(0.8)],
-                                                           startPoint: .topLeading,
-                                                           endPoint: .bottomTrailing),
-                                      isEnabled: store.leftovers.contains(where: \.isSelected)) {
+                        PillButton(title: "Gỡ ứng dụng", systemImage: "trash", kind: .solid,
+                                   isEnabled: store.leftovers.contains(where: \.isSelected)) {
                             confirming = true
                         }
                     }
                 }
                 .padding(14)
             }
-            .cardBackground()
+            .glass()
         } else {
-            EmptyStateView(icon: "shippingbox",
+            EmptyStateView(icon: "shippingbox.fill",
                            title: "Chọn một ứng dụng",
-                           message: "xCleaner sẽ tìm mọi tệp mà ứng dụng đó để lại: dữ liệu, bộ nhớ đệm, tuỳ chọn, tác vụ nền và biên nhận cài đặt.")
-                .cardBackground()
+                           message: "xCleaner sẽ tìm mọi tệp mà ứng dụng đó để lại: dữ liệu, bộ nhớ đệm, tuỳ chọn, tác vụ nền và biên nhận cài đặt.",
+                           gem: skin.gem)
+                .glass()
         }
     }
 }
@@ -165,6 +171,7 @@ struct UninstallerView: View {
 private struct AppRow: View {
     let app: UninstallScanner.InstalledApp
     let isSelected: Bool
+    let skin: ModuleSkin
     let action: () -> Void
     @State private var hovering = false
 
@@ -174,26 +181,30 @@ private struct AppRow: View {
                 AppIconView(url: app.url, size: 26)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(app.name).font(.system(size: 12.5, weight: .medium))
-                        .foregroundStyle(isSelected ? .white : Palette.textPrimary)
-                        .lineLimit(1)
+                        .foregroundStyle(.white).lineLimit(1)
                     Text(app.lastUsed.map { "Dùng \(Fmt.relativeAge($0))" } ?? app.id)
                         .font(.system(size: 10))
-                        .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Palette.textTertiary)
+                        .foregroundStyle(isSelected ? Color.white.opacity(0.75) : Palette.textFaint)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
                 Text(Fmt.size(app.appSize))
                     .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.9) : Palette.textSecondary)
+                    .foregroundStyle(Palette.textSecond)
             }
             .padding(.horizontal, 10)
-            .frame(height: 40)
+            .frame(height: 42)
             .background {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Palette.accentGradient)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(LinearGradient(colors: [skin.gem[0].opacity(0.55),
+                                                      skin.gem[1].opacity(0.55)],
+                                             startPoint: .leading, endPoint: .trailing))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
                 } else if hovering {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Palette.textPrimary.opacity(0.05))
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.white.opacity(0.09))
                 }
             }
             .contentShape(Rectangle())

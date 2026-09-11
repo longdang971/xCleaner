@@ -6,72 +6,21 @@ struct LargeOldView: View {
     @EnvironmentObject private var settings: AppSettings
     @State private var confirming = false
 
+    private let skin = ModuleSkin.skin(for: .largeOld)
+
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title: "Tệp lớn & cũ",
-                       subtitle: "Những tệp chiếm nhiều chỗ nhất trong thư mục nhà của bạn") {
-                HStack(spacing: 8) {
-                    SecondaryButton(title: "Chọn thư mục…", systemImage: "folder") { pickRoot() }
-                    if store.isScanning {
-                        SecondaryButton(title: "Dừng", systemImage: "stop.fill") { store.cancel() }
-                    } else {
-                        SecondaryButton(title: store.files.isEmpty ? "Quét" : "Quét lại",
-                                        systemImage: "magnifyingglass") { store.scan() }
-                    }
-                }
-            }
-            .padding(.horizontal, Metrics.contentPadding)
-            .padding(.top, 34)
-            .padding(.bottom, 16)
-
-            HStack(spacing: 10) {
-                ForEach(LargeOldStore.Filter.allCases) { f in
-                    FilterChip(title: f.rawValue, isOn: store.filter == f) {
-                        withAnimation(Motion.snappy) { store.filter = f }
-                    }
-                }
-                Spacer()
-                SearchField(placeholder: "Lọc theo tên", text: $store.search).frame(width: 200)
-            }
-            .padding(.horizontal, Metrics.contentPadding)
-            .padding(.bottom, 12)
-
-            if store.isScanning {
-                VStack(spacing: 14) {
-                    ScanRing(mode: .scanning(store.progress), bytes: 0,
-                             caption: store.statusText, diameter: 150)
-                    Text("Đang duyệt \(store.roots.map { FileUtils.prettyPath($0) }.joined(separator: ", "))")
-                        .font(.system(size: 11)).foregroundStyle(Palette.textTertiary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if store.files.isEmpty {
-                EmptyStateView(icon: "chart.pie",
-                               title: "Chưa có dữ liệu",
-                               message: "Bấm Quét để tìm các tệp lớn hơn \(settings.largeMinMB) MB. Thư mục Library và node_modules được bỏ qua cho nhanh.")
+            if store.files.isEmpty && !store.isScanning {
+                startScreen
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 2) {
-                        ForEach(store.visibleFiles) { f in
-                            FileRow(found: f, isSelected: store.selected.contains(f.url)) {
-                                store.toggle(f.url)
-                            }
-                        }
-                    }
-                    .padding(8)
-                    .padding(.bottom, 80)
-                }
-                .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                    .fill(Palette.surface))
-                .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                    .strokeBorder(Palette.hairline, lineWidth: 1))
-                .padding(.horizontal, Metrics.contentPadding)
-                .padding(.bottom, Metrics.contentPadding)
+                toolbar
+                    .padding(.horizontal, Metrics.contentPadding)
+                    .padding(.bottom, 12)
+                body_
             }
         }
         .overlay(alignment: .bottom) {
-            if !store.files.isEmpty && !store.isScanning {
-                bottomBar
-            }
+            if !store.files.isEmpty && !store.isScanning { bottomBar }
         }
         .confirmationDialog("Chuyển \(store.selected.count) tệp vào Thùng rác?",
                             isPresented: $confirming, titleVisibility: .visible) {
@@ -82,24 +31,79 @@ struct LargeOldView: View {
         }
     }
 
+    private var startScreen: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            GemView(symbol: "chart.pie.fill", colors: skin.gem, size: 142).padding(.bottom, 18)
+            HeroHeadline(title: "Tệp lớn & cũ",
+                         subtitle: "Tìm các tệp từ \(settings.largeMinMB) MB trở lên trong thư mục nhà.\nLibrary và node_modules được bỏ qua cho nhanh.") {
+                PillButton(title: "Chọn thư mục khác…", systemImage: "folder") { pickRoot() }
+            }
+            .padding(.bottom, 26)
+            CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
+            Spacer()
+            Spacer().frame(height: 30)
+        }
+    }
+
+    @ViewBuilder
+    private var body_: some View {
+        if store.isScanning {
+            VStack(spacing: 16) {
+                ScanRing(mode: .scanning(store.progress), bytes: 0,
+                         caption: store.statusText, diameter: 170, accent: skin.glow)
+                PillButton(title: "Dừng", systemImage: "stop.fill") { store.cancel() }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(store.visibleFiles) { f in
+                            FileRow(found: f, isSelected: store.selected.contains(f.url)) {
+                                store.toggle(f.url)
+                            }
+                        }
+                    }
+                    .padding(8)
+                    .padding(.bottom, 120)
+                }
+                .scrollIndicators(.never)
+                .glass()
+                .padding(.horizontal, Metrics.contentPadding)
+                .padding(.bottom, Metrics.contentPadding)
+
+                BottomFade(height: 120).padding(.bottom, Metrics.contentPadding)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 10) {
+            ForEach(LargeOldStore.Filter.allCases) { f in
+                FilterChip(title: f.rawValue, isOn: store.filter == f) {
+                    withAnimation(Motion.snappy) { store.filter = f }
+                }
+            }
+            Spacer()
+            SearchField(placeholder: "Lọc theo tên", text: $store.search).frame(width: 190)
+            PillButton(title: "Chọn thư mục…", systemImage: "folder") { pickRoot() }
+            PillButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
+        }
+    }
+
     private var bottomBar: some View {
-        HStack {
+        VStack(spacing: 8) {
             Text(store.selected.isEmpty
                  ? "\(store.visibleFiles.count) tệp · \(Fmt.size(store.files.reduce(0) { $0 + $1.size }))"
                  : "Đã chọn \(store.selected.count) tệp · \(Fmt.size(store.selectedSize))")
                 .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(Palette.textPrimary)
-            Spacer()
-            PrimaryButton(title: "Chuyển vào Thùng rác", systemImage: "trash",
-                          isEnabled: !store.selected.isEmpty) { confirming = true }
+                .foregroundStyle(Palette.textSecond)
+            CircleActionButton(title: "Xoá", accent: skin.action,
+                               isEnabled: !store.selected.isEmpty) { confirming = true }
         }
-        .padding(.horizontal, 20).padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Palette.surface)
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Palette.hairline, lineWidth: 1))
-            .shadow(color: .black.opacity(0.14), radius: 20, y: 6))
-        .padding(.horizontal, Metrics.contentPadding + 10)
-        .padding(.bottom, 26)
+        .padding(.bottom, 18)
     }
 
     private func pickRoot() {
@@ -113,34 +117,6 @@ struct LargeOldView: View {
             store.roots = panel.urls
             store.scan()
         }
-    }
-}
-
-struct FilterChip: View {
-    let title: String
-    let isOn: Bool
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11.5, weight: isOn ? .semibold : .regular))
-                .foregroundStyle(isOn ? .white : Palette.textSecondary)
-                .padding(.horizontal, 13)
-                .frame(height: 26)
-                .background {
-                    if isOn {
-                        Capsule().fill(Palette.accentGradient)
-                    } else {
-                        Capsule().fill(Palette.surfaceAlt)
-                            .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
-                            .brightness(hovering ? 0.03 : 0)
-                    }
-                }
-        }
-        .buttonStyle(.plain)
-        .onHover { h in hovering = h }
     }
 }
 
@@ -159,10 +135,9 @@ private struct FileRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(found.url.lastPathComponent)
                     .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(Palette.textPrimary).lineLimit(1)
+                    .foregroundStyle(.white).lineLimit(1)
                 Text(FileUtils.prettyPath(found.url.deletingLastPathComponent()))
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Palette.textTertiary)
+                    .font(.system(size: 10.5)).foregroundStyle(Palette.textFaint)
                     .lineLimit(1).truncationMode(.middle)
             }
 
@@ -173,37 +148,33 @@ private struct FileRow: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Palette.warning)
                     .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(Capsule().fill(Palette.warning.opacity(0.14)))
+                    .background(Capsule().fill(Palette.warning.opacity(0.20)))
             }
 
-            Text(found.kind).font(.system(size: 10.5))
-                .foregroundStyle(Palette.textTertiary)
-                .frame(width: 90, alignment: .trailing)
-
+            Text(found.kind).font(.system(size: 10.5)).foregroundStyle(Palette.textFaint)
+                .frame(width: 86, alignment: .trailing)
             Text(Fmt.relativeAge(found.accessed ?? found.modified))
-                .font(.system(size: 10.5))
-                .foregroundStyle(Palette.textTertiary)
-                .frame(width: 100, alignment: .trailing)
-
+                .font(.system(size: 10.5)).foregroundStyle(Palette.textFaint)
+                .frame(width: 96, alignment: .trailing)
             Text(Fmt.size(found.size))
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(Palette.textPrimary)
-                .frame(width: 80, alignment: .trailing)
+                .foregroundStyle(.white)
+                .frame(width: 78, alignment: .trailing)
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([found.url])
             } label: {
                 Image(systemName: "arrow.up.forward.app")
                     .font(.system(size: 11))
-                    .foregroundStyle(hovering ? Palette.textSecondary : .clear)
+                    .foregroundStyle(hovering ? Palette.textSecond : .clear)
             }
             .buttonStyle(.plain).help("Hiện trong Finder")
         }
         .padding(.horizontal, 10)
         .frame(height: 40)
         .background(RoundedRectangle(cornerRadius: Metrics.rowRadius, style: .continuous)
-            .fill(isSelected ? Palette.accent.opacity(0.10)
-                             : (hovering ? Palette.textPrimary.opacity(0.04) : .clear)))
+            .fill(isSelected ? Color.white.opacity(0.16)
+                             : (hovering ? Color.white.opacity(0.07) : .clear)))
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
         .onHover { h in hovering = h }

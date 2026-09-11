@@ -18,7 +18,7 @@ struct SettingsView: View {
             Section {
                 Toggle("Chuyển vào Thùng rác thay vì xoá vĩnh viễn", isOn: $settings.moveToTrash)
                 Text("Bật tuỳ chọn này thì dung lượng chỉ thực sự được giải phóng sau khi bạn đổ Thùng rác. Tệp nằm trong thư mục hệ thống luôn bị xoá thẳng vì Thùng rác không nhận tệp của root.")
-                    .font(.system(size: 11)).foregroundStyle(Palette.textTertiary)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Section {
                 Toggle("Hỏi lại trước khi dọn", isOn: $settings.confirmBeforeClean)
@@ -33,7 +33,7 @@ struct SettingsView: View {
                     }
                 }
                 Text("Cấp quyền này để xCleaner đọc được dữ liệu Safari, Mail và một vài thư mục được macOS bảo vệ.")
-                    .font(.system(size: 11)).foregroundStyle(Palette.textTertiary)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -59,20 +59,15 @@ struct SettingsView: View {
 
     private var about: some View {
         VStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Palette.accentGradient)
-                    .frame(width: 64, height: 64)
-                Image(systemName: "wand.and.sparkles")
-                    .font(.system(size: 30, weight: .medium))
-                    .foregroundStyle(.white)
-            }
+            GemView(symbol: "wand.and.sparkles",
+                    colors: ModuleSkin.skin(for: .smartScan).gem,
+                    size: 76, floating: false)
             Text("xCleaner").font(.system(size: 20, weight: .bold))
             Text("Phiên bản \((Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "1.0")")
-                .font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
+                .font(.system(size: 12)).foregroundStyle(.secondary)
             Text("Ứng dụng không gửi bất cứ dữ liệu nào ra ngoài máy. Mọi thao tác xoá đều đi qua một hàng rào kiểm tra đường dẫn, và thư mục hệ thống chỉ bị đụng tới sau khi bạn nhập mật khẩu quản trị.")
                 .font(.system(size: 11.5))
-                .foregroundStyle(Palette.textSecondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 30)
             Spacer()
