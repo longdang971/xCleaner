@@ -258,9 +258,10 @@ struct GroupTile: View {
                 // Hoạ tiết nền: chỉ mỗi biểu tượng, không khối bao, không viền — để nó đọc ra
                 // như hình in chìm trên thẻ chứ không phải một vật thể dán lên.
                 Image(systemName: group.icon)
-                    .font(.system(size: 104, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(hovering ? 0.22 : 0.16))
-                    .offset(x: 26, y: -14)
+                    .font(.system(size: 72, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(hovering ? 0.26 : 0.19))
+                    .padding(.trailing, 14)
+                    .padding(.top, 14)
 
                 // Tối dần về phía dưới trái để chữ luôn tách khỏi nền màu
                 LinearGradient(colors: [.clear, .black.opacity(0.30)],
