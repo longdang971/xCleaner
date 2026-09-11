@@ -374,6 +374,7 @@ struct GroupDetailView: View {
                         .resizable().interpolation(.high)
                         .frame(width: 54, height: 54)
                         .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
+                        .padding(.top, 8)
                 }
                 HeroHeadline(title: group.title,
                          subtitle: group.needsFullDiskAccess

@@ -25,11 +25,13 @@ struct RootView: View {
             }
             .padding(.leading, Metrics.sidebarWidth)
 
-            // Tiêu đề căn giữa cả cửa sổ (không phải giữa vùng nội dung) cho cân với ba nút hệ thống.
+            // Tiêu đề phải căn giữa đúng vùng nội dung, giống mọi thứ khác trong trang.
+            // Căn giữa cả cửa sổ thì nó lệch khỏi tiêu đề trang đúng bằng nửa bề rộng sidebar.
             VStack {
                 TitleBar(title: state.module.title)
                 Spacer()
             }
+            .padding(.leading, Metrics.sidebarWidth)
 
             // Sidebar nằm đè lên nội dung để lúc nở ra bố cục không bị đẩy.
             HStack(spacing: 0) {
