@@ -580,52 +580,20 @@ struct PartCard: View {
         .onTapGesture(perform: onToggleAll)
     }
 
-    @ViewBuilder
     private var body_: some View {
-        VStack(spacing: 0) {
-            if subcategories.isEmpty {
-                rows(items.prefix(visibleLimit).map { $0 })
-            } else {
-                ForEach(subcategories, id: \.self) { sub in
-                    let list = items.filter { $0.subcategory == sub }
-                    if !list.isEmpty {
-                        subheader(sub, list)
-                        rows(list)
-                    }
-                }
+        let shown = Array(items.prefix(visibleLimit))
+        return VStack(spacing: 0) {
+            ForEach(Array(shown.enumerated()), id: \.element.id) { idx, item in
+                ItemRow(item: item,
+                        showsDivider: idx < shown.count - 1) { onToggleItem(item.id) }
             }
 
-            if items.count > visibleLimit && subcategories.isEmpty {
+            if items.count > visibleLimit {
                 Text("… và \(items.count - visibleLimit) mục nữa (đã tính vào tổng)")
                     .font(.system(size: 11)).foregroundStyle(Color.white.opacity(0.72))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16).padding(.vertical, 10)
             }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private func subheader(_ sub: String, _ list: [CleanItem]) -> some View {
-        HStack(spacing: 8) {
-            Text(sub.uppercased())
-                .font(.system(size: 10, weight: .bold))
-                .tracking(0.7)
-                .foregroundStyle(Color.white.opacity(0.62))
-            Rectangle()
-                .fill(Color.white.opacity(0.14))
-                .frame(height: 1)
-            Text(Fmt.size(list.reduce(0) { $0 + $1.size }))
-                .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.62))
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 4)
-    }
-
-    private func rows(_ list: [CleanItem]) -> some View {
-        ForEach(list) { item in
-            ItemRow(item: item) { onToggleItem(item.id) }
         }
     }
 }
@@ -634,6 +602,7 @@ struct PartCard: View {
 
 struct ItemRow: View {
     let item: CleanItem
+    var showsDivider: Bool = false
     var onToggle: () -> Void
     @State private var hovering = false
 
@@ -672,8 +641,17 @@ struct ItemRow: View {
                 .frame(width: 74, alignment: .trailing)
                 .padding(.trailing, 16)
         }
-        .frame(height: 34)
+        .frame(height: 42)
         .background(hovering ? Color.white.opacity(0.07) : .clear)
+        .overlay(alignment: .bottom) {
+            if showsDivider {
+                Rectangle()
+                    .fill(Color.white.opacity(0.10))
+                    .frame(height: 1)
+                    .padding(.leading, 42)
+                    .padding(.trailing, 16)
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
         .onHover { h in hovering = h }
