@@ -244,6 +244,9 @@ struct ScanProgress {
     var stageIndex: Int? = nil
     /// Dung lượng đã chốt của các chặng đã xong.
     var stageBytes: [Int: Int64] = [:]
+    /// Mục vừa tìm thấy — để thẻ đang quét có thứ mà liệt kê thay vì trống trơn.
+    var foundName: String? = nil
+    var foundBytes: Int64 = 0
 }
 
 // MARK: - Tiến trình dọn

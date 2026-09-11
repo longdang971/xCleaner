@@ -16,6 +16,8 @@ struct ProgressTile: View {
     let phase: Phase
     /// Dòng chạy khi đang xử lý: tên tệp đang quét hoặc mục vừa dọn xong.
     var detail: String = ""
+    /// Những mục vừa tìm thấy (hoặc vừa dọn xong) để thẻ đang chạy có nội dung.
+    var entries: [CleanedEntry] = []
     /// Nhãn dưới số liệu của thẻ đã xong.
     var doneCaption: String = "để dọn"
     /// Câu hiện khi thẻ đang chạy.
@@ -53,11 +55,36 @@ struct ProgressTile: View {
                 Text(runningTitle)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
-                Text(detail.isEmpty ? "…" : detail)
+                    .padding(.bottom, entries.isEmpty ? 0 : 10)
+
+                if !entries.isEmpty {
+                    // Liệt kê những gì vừa tìm được: thẻ phình to mà chỉ có hai dòng chữ
+                    // thì trông trống hoác.
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(entries.suffix(5)) { e in
+                            HStack(spacing: 8) {
+                                Text(e.name)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Color.white.opacity(0.95))
+                                    .lineLimit(1).truncationMode(.middle)
+                                Spacer(minLength: 8)
+                                Text(Fmt.size(e.bytes))
+                                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                    .foregroundStyle(Color.white.opacity(0.85))
+                            }
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .bottom).combined(with: .opacity),
+                                removal: .opacity))
+                        }
+                    }
+                    .animation(Motion.snappy, value: entries.count)
+                }
+
+                Text(detail.isEmpty ? " " : detail)
                     .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(0.82))
+                    .foregroundStyle(Color.white.opacity(0.72))
                     .lineLimit(1).truncationMode(.middle)
-                    .padding(.top, 2)
+                    .padding(.top, entries.isEmpty ? 2 : 10)
                     .animation(nil, value: detail)
 
             case .pending:
@@ -117,6 +144,7 @@ struct ProgressGrid: View {
     let activeIndex: Int?
     let stageBytes: [Int: Int64]
     let detail: String
+    var entries: [CleanedEntry] = []
     var doneCaption: String = "để dọn"
     var runningTitle: String = "Đang tìm…"
 
@@ -167,6 +195,7 @@ struct ProgressGrid: View {
                      gem: TileGems.gem(for: index),
                      phase: phase(for: index),
                      detail: index == activeIndex ? detail : "",
+                     entries: index == activeIndex ? entries : [],
                      doneCaption: doneCaption,
                      runningTitle: runningTitle)
     }
@@ -186,6 +215,7 @@ struct ScanningView: View {
     let stageBytes: [Int: Int64]
     let currentFile: String
     let totalBytes: Int64
+    let found: [CleanedEntry]
     let skin: ModuleSkin
     var onStop: () -> Void
 
@@ -196,7 +226,8 @@ struct ScanningView: View {
             ProgressGrid(stages: stages,
                          activeIndex: currentStage,
                          stageBytes: stageBytes,
-                         detail: currentFile)
+                         detail: currentFile,
+                         entries: found)
                 .padding(.horizontal, Metrics.contentPadding)
                 .padding(.bottom, 18)
 
@@ -253,7 +284,8 @@ struct CleaningView: View {
             ProgressGrid(stages: stages,
                          activeIndex: currentStage,
                          stageBytes: stageBytes,
-                         detail: entries.last?.name ?? "",
+                         detail: "",
+                         entries: entries,
                          doneCaption: "đã dọn",
                          runningTitle: "Đang dọn…")
                 .padding(.horizontal, Metrics.contentPadding)

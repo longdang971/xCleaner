@@ -33,7 +33,8 @@ struct SystemJunkScanner: ModuleScanner {
             of: FileUtils.homePath("Library/Caches"),
             skip: ["CloudKit", "com.apple.containermanagerd", "com.apple.nsurlsessiond"],
             cancel: cancel,
-            progress: { report(0, steps, "Bộ nhớ đệm: \($0)") })
+            progress: { report(0, steps, "Bộ nhớ đệm: \($0)") },
+            found: { stage.found($0, $1) })
         userCache.append(contentsOf: itemsFromChildren(
             of: FileUtils.homePath("Library/Containers"),
             cancel: cancel).compactMap { item -> CleanItem? in
@@ -55,7 +56,8 @@ struct SystemJunkScanner: ModuleScanner {
         let systemCache = itemsFromChildren(
             of: URL(fileURLWithPath: "/Library/Caches"),
             cancel: cancel,
-            progress: { report(1, steps, "Hệ thống: \($0)") })
+            progress: { report(1, steps, "Hệ thống: \($0)") },
+            found: { stage.found($0, $1) })
         found += systemCache.reduce(0) { $0 + $1.size }
         if !systemCache.isEmpty {
             groups.append(CleanGroup(id: "sys-cache", title: "Bộ nhớ đệm hệ thống",
@@ -67,7 +69,8 @@ struct SystemJunkScanner: ModuleScanner {
 
         // 3. Nhật ký người dùng
         report(2, steps, "Nhật ký người dùng…")
-        var userLogs = itemsFromChildren(of: FileUtils.homePath("Library/Logs"), cancel: cancel)
+        var userLogs = itemsFromChildren(of: FileUtils.homePath("Library/Logs"), cancel: cancel,
+                                         found: { stage.found($0, $1) })
         userLogs.append(contentsOf: [
             FileUtils.homePath("Library/Application Support/CrashReporter")
         ].compactMap { makeItem($0, name: "CrashReporter", cancel: cancel) })
@@ -82,7 +85,8 @@ struct SystemJunkScanner: ModuleScanner {
 
         // 4. Nhật ký hệ thống (cần quyền quản trị)
         report(3, steps, "Nhật ký hệ thống…")
-        var sysLogs = itemsFromChildren(of: URL(fileURLWithPath: "/Library/Logs"), cancel: cancel)
+        var sysLogs = itemsFromChildren(of: URL(fileURLWithPath: "/Library/Logs"), cancel: cancel,
+                                        found: { stage.found($0, $1) })
         // Trong /var/log chỉ đụng tới log đã xoay vòng, tuyệt đối không xoá log đang mở.
         for f in FileUtils.children(of: URL(fileURLWithPath: "/private/var/log")) {
             if cancel.isCancelled { break }
@@ -115,7 +119,10 @@ struct SystemJunkScanner: ModuleScanner {
             for f in FileUtils.children(of: dir) where !f.lastPathComponent.hasPrefix(".") {
                 if cancel.isCancelled { break }
                 if let i = makeItem(f, detail: Fmt.relativeAge(FileUtils.modificationDate(of: f)),
-                                    cancel: cancel) { crash.append(i) }
+                                    cancel: cancel) {
+                    stage.found(i.name, i.size)
+                    crash.append(i)
+                }
             }
         }
         crash.sort { $0.size > $1.size }

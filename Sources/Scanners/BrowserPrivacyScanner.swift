@@ -305,6 +305,7 @@ struct BrowserPrivacyScanner: ModuleScanner {
                                     cancel: cancel,
                                     category: e.part,
                                     safety: e.safety) {
+                    stage.found(i.name, i.size)
                     items.append(i)
                 }
             }

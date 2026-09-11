@@ -26,6 +26,7 @@ struct GroupedModuleView: View {
                              stageBytes: store.stageBytes,
                              currentFile: store.statusText,
                              totalBytes: store.liveBytes,
+                             found: store.found,
                              skin: skin,
                              onStop: { store.cancelScan() })
                     .transition(.opacity)

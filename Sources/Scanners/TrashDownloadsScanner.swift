@@ -35,7 +35,10 @@ struct TrashDownloadsScanner: ModuleScanner {
                 if cancel.isCancelled { break }
                 stage.working(f.lastPathComponent)
                 if let i = makeItem(f, detail: Fmt.relativeAge(FileUtils.modificationDate(of: f)),
-                                    cancel: cancel) { trash.append(i) }
+                                    cancel: cancel) {
+                    stage.found(i.name, i.size)
+                    trash.append(i)
+                }
             }
         }
         trash.sort { $0.size > $1.size }

@@ -81,6 +81,8 @@ struct SmartScanScanner: ModuleScanner {
                 if let i = index(.cache), let a = sb[0], let b = sb[1] { stage.mark(i, a + b) }
                 if let i = index(.logs), let a = sb[2], let b = sb[3] { stage.mark(i, a + b) }
                 if let i = index(.crash), let v = sb[4] { stage.mark(i, v) }
+                // Chuyển tiếp mục vừa tìm thấy, nếu không thẻ đang quét chẳng có gì để liệt kê.
+                if let n = p.foundName, p.foundBytes > 0 { stage.found(n, p.foundBytes) }
                 stage.working(p.message)
             }
             .filter { $0.safety == .safe }
@@ -91,7 +93,10 @@ struct SmartScanScanner: ModuleScanner {
         if let ti = index(.trash) {
             stage.begin(ti)
             trash = TrashDownloadsScanner()
-                .scan(cancel: cancel) { stage.working($0.message) }
+                .scan(cancel: cancel) { p in
+                    if let n = p.foundName, p.foundBytes > 0 { stage.found(n, p.foundBytes) }
+                    stage.working(p.message)
+                }
                 .filter { $0.id == "trash" }
             let trashBytes = trash.reduce(0) { $0 + $1.totalSize }
             bytes += trashBytes
@@ -100,7 +105,10 @@ struct SmartScanScanner: ModuleScanner {
         if cancel.isCancelled { return junk + trash }
 
         if let bi = index(.browsers) { stage.begin(bi) }
-        let browsers = BrowserPrivacyScanner().scan(cancel: cancel) { stage.working($0.message) }
+        let browsers = BrowserPrivacyScanner().scan(cancel: cancel) { p in
+            if let n = p.foundName, p.foundBytes > 0 { stage.found(n, p.foundBytes) }
+            stage.working(p.message)
+        }
 
         var result: [CleanGroup] = []
         result += junk.filter {

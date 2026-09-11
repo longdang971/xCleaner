@@ -55,6 +55,8 @@ final class ScanStore: ObservableObject {
     @Published var stages: [ScanStage] = []
     @Published var currentStage: Int? = nil
     @Published var stageBytes: [Int: Int64] = [:]
+    /// Những mục vừa tìm thấy ở chặng đang chạy, mới nhất ở cuối.
+    @Published var found: [CleanedEntry] = []
 
     /// Những mục vừa dọn xong, mới nhất ở cuối.
     @Published var cleaned: [CleanedEntry] = []
@@ -104,17 +106,28 @@ final class ScanStore: ObservableObject {
         stages = scanner.stages
         currentStage = stages.isEmpty ? nil : 0
         stageBytes = [:]
+        found = []
         let token = cancelToken
         let throttle = self.throttle
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = scanner.scan(cancel: token) { p in
+                if let name = p.foundName, p.foundBytes > 0 {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        self.found.append(CleanedEntry(name: name, bytes: p.foundBytes))
+                        if self.found.count > 60 { self.found.removeFirst(self.found.count - 60) }
+                    }
+                }
                 throttle.emit {
                     guard let self else { return }
                     self.progress = p.fraction
                     self.statusText = p.message
                     if p.bytesFound > 0 { self.liveBytes = p.bytesFound }
-                    if self.currentStage != p.stageIndex { self.currentStage = p.stageIndex }
+                    if self.currentStage != p.stageIndex {
+                        self.currentStage = p.stageIndex
+                        self.found = []          // sang chặng khác thì danh sách bắt đầu lại
+                    }
                     if self.stageBytes != p.stageBytes { self.stageBytes = p.stageBytes }
                 }
             }
@@ -332,6 +345,7 @@ final class ScanStore: ObservableObject {
             stages = []
             currentStage = nil
             stageBytes = [:]
+            found = []
             phase = .idle
         }
     }

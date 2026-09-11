@@ -62,6 +62,15 @@ final class StageReporter {
         send(message: what)
     }
 
+    /// Vừa tìm được một mục đáng kể trong chặng hiện tại.
+    func found(_ name: String, _ size: Int64) {
+        guard size > 0 else { return }
+        emit(ScanProgress(fraction: min(0.99, (Double(current) + 0.35) / Double(total)),
+                          message: name, bytesFound: found + size,
+                          stageIndex: current, stageBytes: bytes,
+                          foundName: name, foundBytes: size))
+    }
+
     /// Chặng đã xong với ngần này dung lượng.
     func finish(_ index: Int, bytes size: Int64) {
         let elapsed = CFAbsoluteTimeGetCurrent() - stageStartedAt
@@ -132,7 +141,8 @@ extension ModuleScanner {
                            selected: Bool = true,
                            skip: Set<String> = [],
                            cancel: CancelToken,
-                           progress: ((String) -> Void)? = nil) -> [CleanItem] {
+                           progress: ((String) -> Void)? = nil,
+                           found: ((String, Int64) -> Void)? = nil) -> [CleanItem] {
         guard FileUtils.isDirectory(parent) else { return [] }
         var result: [CleanItem] = []
         for child in FileUtils.children(of: parent) {
@@ -142,6 +152,7 @@ extension ModuleScanner {
             if skip.contains(n) { continue }
             progress?(n)
             if let item = makeItem(child, name: prettyName(n), selected: selected, cancel: cancel) {
+                found?(item.name, item.size)
                 result.append(item)
             }
         }
