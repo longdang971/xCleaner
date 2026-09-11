@@ -18,8 +18,20 @@ struct LargeOldScanner {
         let accessed: Date?
         let kind: String
 
+        /// "Lâu không đụng tới" tính theo ngày sửa đổi, không theo `contentAccessDate`:
+        /// atime bị Spotlight và bản sao lưu chạm vào nên tệp nằm im mấy năm vẫn trông như
+        /// vừa dùng hôm qua. Lấy mốc muộn hơn trong hai ngày để không kết luận nhầm là cũ.
+        var lastTouched: Date? {
+            switch (modified, accessed) {
+            case let (m?, a?): return max(m, a)
+            case let (m?, nil): return m
+            case let (nil, a?): return a
+            default: return nil
+            }
+        }
+
         var isOld: Bool {
-            guard let d = accessed ?? modified else { return false }
+            guard let d = modified else { return false }
             return Date().timeIntervalSince(d) > 180 * 86_400
         }
 

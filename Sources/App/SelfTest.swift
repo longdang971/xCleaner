@@ -9,6 +9,7 @@ enum SelfTest {
     private static var passed = 0
     private static var failed = 0
 
+    @MainActor
     static func run() {
         passed = 0; failed = 0
         print("=== xCleaner self-test ===")
@@ -20,6 +21,8 @@ enum SelfTest {
         testSizeCalculation()
         testSelectionMemory()
         testUninstaller()
+        testDuplicates()
+        testLargeOld()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
     }
@@ -298,6 +301,121 @@ enum SelfTest {
         check("app đã biến mất", !FileUtils.exists(appURL))
         check("tệp còn sót đã sạch", expected.allSatisfy { !FileUtils.exists($0) })
         check("mồi nhử vẫn còn nguyên", decoys.allSatisfy { FileUtils.exists($0) })
+    }
+
+    // MARK: Tệp trùng lặp
+
+    @MainActor
+    private static func testDuplicates() {
+        print("[Duplicates] so khớp nội dung")
+        let fm = FileManager.default
+        let dir = makeSandbox()
+
+        // Ba bản giống hệt nhau, tên khác nhau, một bản nằm sâu hơn
+        let payload = Data((0..<(2 * 1024 * 1024)).map { UInt8($0 % 251) })
+        let deep = dir.appendingPathComponent("sâu/hơn")
+        try? fm.createDirectory(at: deep, withIntermediateDirectories: true)
+        let copies = [dir.appendingPathComponent("a.bin"),
+                      dir.appendingPathComponent("bản sao.bin"),
+                      deep.appendingPathComponent("c.bin")]
+        for u in copies { fm.createFile(atPath: u.path, contents: payload) }
+
+        // Cùng kích thước nhưng khác nội dung — không được gộp chung
+        var twist = payload
+        twist[twist.count - 1] = twist[twist.count - 1] &+ 1
+        let sameSize = dir.appendingPathComponent("khác-ruột.bin")
+        fm.createFile(atPath: sameSize.path, contents: twist)
+
+        // Dưới ngưỡng, và nằm trong thư mục bị bỏ qua
+        fm.createFile(atPath: dir.appendingPathComponent("bé.bin").path,
+                      contents: Data(repeating: 9, count: 500))
+        let skipped = dir.appendingPathComponent("node_modules")
+        try? fm.createDirectory(at: skipped, withIntermediateDirectories: true)
+        fm.createFile(atPath: skipped.appendingPathComponent("a.bin").path, contents: payload)
+
+        var opts = DuplicateScanner.Options()
+        opts.roots = [dir]
+        opts.minimumSize = 1024 * 1024
+        let sets = DuplicateScanner().scan(options: opts, cancel: CancelToken()) { _ in }
+
+        check("tìm đúng một nhóm trùng", sets.count == 1, "(được \(sets.count))")
+        guard let set = sets.first else { try? fm.removeItem(at: sandbox); return }
+        check("nhóm có đúng ba bản", set.files.count == 3, "(được \(set.files.count))")
+        check("không gộp tệp cùng cỡ khác ruột",
+              !set.files.contains { $0.lastPathComponent == "khác-ruột.bin" })
+        check("bỏ qua node_modules", !set.files.contains { $0.path.contains("node_modules") })
+        check("tính đúng chỗ lấy lại được", set.reclaimable == set.size * 2)
+
+        // Chọn tự động: giữ lại bản đường dẫn ngắn nhất
+        let store = DuplicateStore(settings: AppSettings())
+        store.sets = sets
+        store.autoSelect()
+        check("tự chọn để lại đúng một bản", store.selected.count == 2,
+              "(chọn \(store.selected.count))")
+        let kept = set.files.first { !store.selected.contains($0) }
+        check("bản giữ lại là bản ở đường dẫn ngắn nhất",
+              kept == set.files.min(by: { $0.path.count < $1.path.count }))
+
+        // Không cho phép bỏ hết cả nhóm
+        if let keepURL = kept { store.toggle(keepURL, in: set) }
+        check("không cho xoá sạch cả nhóm", store.selected.count == 2,
+              "(chọn \(store.selected.count))")
+
+        try? fm.removeItem(at: sandbox)
+    }
+
+    // MARK: Tệp lớn & cũ
+
+    private static func testLargeOld() {
+        print("[LargeOld] tìm tệp lớn")
+        let fm = FileManager.default
+        let dir = makeSandbox()
+
+        let big = dir.appendingPathComponent("phim.mp4")
+        let medium = dir.appendingPathComponent("bộ-cài.dmg")
+        let small = dir.appendingPathComponent("nhỏ.txt")
+        fm.createFile(atPath: big.path, contents: Data(repeating: 1, count: 5 * 1024 * 1024))
+        fm.createFile(atPath: medium.path, contents: Data(repeating: 2, count: 2 * 1024 * 1024))
+        fm.createFile(atPath: small.path, contents: Data(repeating: 3, count: 1024))
+
+        // Nằm trong thư mục cố tình bỏ qua
+        for skip in ["node_modules", "Library", ".git"] {
+            let sub = dir.appendingPathComponent(skip)
+            try? fm.createDirectory(at: sub, withIntermediateDirectories: true)
+            fm.createFile(atPath: sub.appendingPathComponent("to.bin").path,
+                          contents: Data(repeating: 4, count: 5 * 1024 * 1024))
+        }
+
+        // Một tệp cũ hẳn để kiểm tra cờ "lâu không dùng"
+        let old = dir.appendingPathComponent("cũ.zip")
+        fm.createFile(atPath: old.path, contents: Data(repeating: 5, count: 3 * 1024 * 1024))
+        let longAgo = Date().addingTimeInterval(-400 * 86_400)
+        try? fm.setAttributes([.modificationDate: longAgo], ofItemAtPath: old.path)
+
+        var opts = LargeOldScanner.Options()
+        opts.roots = [dir]
+        opts.minimumSize = 1024 * 1024
+        let found = LargeOldScanner().scan(options: opts, cancel: CancelToken()) { _ in }
+
+        let names = found.map(\.url.lastPathComponent)
+        check("tìm đủ ba tệp lớn", found.count == 3, "(được \(found.count): \(names))")
+        check("bỏ qua tệp nhỏ", !names.contains("nhỏ.txt"))
+        check("bỏ qua thư mục node_modules/Library/.git",
+              !found.contains { $0.url.path.contains("node_modules")
+                               || $0.url.path.contains("/Library/")
+                               || $0.url.path.contains("/.git/") })
+        check("sắp theo dung lượng giảm dần",
+              found.map(\.size) == found.map(\.size).sorted(by: >))
+        check("nhận ra định dạng video",
+              found.first { $0.url.lastPathComponent == "phim.mp4" }?.kind == "Video")
+        check("nhận ra bộ cài",
+              found.first { $0.url.lastPathComponent == "bộ-cài.dmg" }?.kind == "Nén / bộ cài")
+        check("đánh dấu tệp sửa từ hơn nửa năm trước là cũ",
+              found.first { $0.url.lastPathComponent == "cũ.zip" }?.isOld == true)
+        check("tệp vừa tạo thì không bị coi là cũ",
+              found.first { $0.url.lastPathComponent == "phim.mp4" }?.isOld == false)
+
+        try? fm.removeItem(at: sandbox)
     }
 
     private static func testSizeCalculation() {

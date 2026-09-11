@@ -158,7 +158,7 @@ private struct FileRow: View {
 
             Text(found.kind).font(.system(size: 10.5)).foregroundStyle(Palette.textFaint)
                 .frame(width: 86, alignment: .trailing)
-            Text(Fmt.relativeAge(found.accessed ?? found.modified))
+            Text(Fmt.relativeAge(found.lastTouched))
                 .font(.system(size: 10.5)).foregroundStyle(Palette.textFaint)
                 .frame(width: 96, alignment: .trailing)
             Text(Fmt.size(found.size))
