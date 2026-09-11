@@ -932,3 +932,72 @@ struct ModuleIntro<Extra: View>: View {
         .padding(.horizontal, Metrics.contentPadding)
     }
 }
+
+// MARK: - Hộp thoại của riêng app
+
+/// Hộp thoại dựng bằng chính ngôn ngữ của app thay vì `alert` hệ thống: nền tối mờ, thẻ kính,
+/// nút hành động chính tô sáng.
+struct AppDialog<Content: View>: View {
+    var accent: Color
+    var primaryTitle: String
+    var secondaryTitle: String
+    var onPrimary: () -> Void
+    var onSecondary: () -> Void
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ZStack {
+            // `Color` mới giãn hết mọi hướng; `Rectangle` bị ZStack ép về đúng kích thước
+            // hộp thoại nên phần còn lại của màn hình vẫn sáng nguyên.
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onSecondary)
+
+            VStack(spacing: 20) {
+                content
+
+                HStack(spacing: 10) {
+                    Button(action: onSecondary) {
+                        Text(secondaryTitle)
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
+                            .background(Capsule().fill(Color.white.opacity(0.16)))
+                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: onPrimary) {
+                        Text(primaryTitle)
+                            .font(.system(size: 13.5, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
+                            .background(Capsule().fill(accent))
+                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.55), lineWidth: 1))
+                            .clipShape(Capsule())
+                            .shadow(color: accent.opacity(0.6), radius: 14, y: 4)
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(26)
+            .frame(width: 420)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.black.opacity(0.55))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(Color.white.opacity(0.10)))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .shadow(color: .black.opacity(0.45), radius: 34, y: 14)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(.opacity)
+    }
+}

@@ -75,6 +75,36 @@ struct GroupedModuleView: View {
 
         }
         .animation(Motion.standard, value: store.phase)
+        // Hộp thoại phải là overlay của cả màn hình: đặt trong ZStack, lớp mờ bị ép theo
+        // kích thước của chính hộp thoại và phần còn lại vẫn sáng nguyên.
+        .overlay {
+            if let pending = store.pendingQuit {
+                AppDialog(accent: skin.action,
+                          primaryTitle: "Thoát \(pending.name)",
+                          secondaryTitle: "Dừng",
+                          onPrimary: { store.quitPendingApp() },
+                          onSecondary: { store.cancelPendingQuit() }) {
+                    VStack(spacing: 14) {
+                        if let icon = AppIconProvider.icon(forBundleID: pending.bundleID) {
+                            Image(nsImage: icon)
+                                .resizable().interpolation(.high)
+                                .frame(width: 62, height: 62)
+                                .shadow(color: .black.opacity(0.4), radius: 12, y: 5)
+                        }
+                        Text("\(pending.name) đang mở")
+                            .font(.system(size: 19, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text("Thoát ứng dụng rồi xCleaner dọn tiếp. Nếu để nguyên, phần dữ liệu vừa xoá có thể được ghi lại ngay sau đó.")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Palette.textSecond)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .zIndex(20)
+            }
+        }
+        .animation(Motion.standard, value: store.pendingQuit)
         .onReceive(NotificationCenter.default.publisher(for: .xcRescan)) { _ in
             reviewing = nil
             store.scan()
@@ -84,6 +114,10 @@ struct GroupedModuleView: View {
             if ProcessInfo.processInfo.environment["XCLEANER_DEMO_CLEAN"] == "1",
                store.phase == .results {
                 store.debugDemoClean()
+            }
+            if ProcessInfo.processInfo.environment["XCLEANER_DEMO_QUIT"] == "1",
+               store.phase == .results {
+                store.debugShowQuitDialog()
             }
             if let want = ProcessInfo.processInfo.environment["XCLEANER_REVIEW"],
                store.phase == .results, reviewing == nil {

@@ -58,6 +58,16 @@ final class ScanStore: ObservableObject {
     /// Những mục vừa tìm thấy ở chặng đang chạy, mới nhất ở cuối.
     @Published var found: [CleanedEntry] = []
 
+    /// Ứng dụng đang mở mà lần dọn này sẽ đụng tới — chờ người dùng quyết định.
+    struct PendingQuit: Identifiable, Equatable {
+        let id = UUID()
+        let bundleID: String
+        let name: String
+    }
+    @Published var pendingQuit: PendingQuit?
+    private var quitQueue: [PendingQuit] = []
+    private var pendingCleanGroups: [CleanGroup] = []
+
     /// Những mục vừa dọn xong, mới nhất ở cuối.
     @Published var cleaned: [CleanedEntry] = []
     @Published var cleanTotal: Int = 0
@@ -250,6 +260,65 @@ final class ScanStore: ObservableObject {
             : groups.filter { $0.id == groupID && $0.items.contains(where: \.isSelected) }
         guard !sourceGroups.isEmpty else { return }
 
+        // Ứng dụng nào đang mở mà lần dọn này sẽ đụng vào? Hỏi trước, rồi mới xoá.
+        let running = Self.runningApps(in: sourceGroups)
+        if !running.isEmpty {
+            pendingCleanGroups = sourceGroups
+            quitQueue = Array(running.dropFirst())
+            pendingQuit = running.first
+            return
+        }
+        startCleaning(sourceGroups)
+    }
+
+    /// Người dùng chọn thoát ứng dụng rồi dọn tiếp.
+    func quitPendingApp() {
+        guard let pending = pendingQuit else { return }
+        NSRunningApplication.runningApplications(withBundleIdentifier: pending.bundleID)
+            .forEach { $0.terminate() }
+        // Cho app một nhịp để đóng hẳn; không chờ thì tệp vừa xoá lại bị ghi đè ngay.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            self?.advanceQuitQueue()
+        }
+    }
+
+    /// Người dùng chọn dừng: không dọn gì cả.
+    func cancelPendingQuit() {
+        pendingQuit = nil
+        quitQueue = []
+        pendingCleanGroups = []
+    }
+
+    private func advanceQuitQueue() {
+        if let next = quitQueue.first {
+            quitQueue.removeFirst()
+            pendingQuit = next
+            return
+        }
+        let groups = pendingCleanGroups
+        pendingQuit = nil
+        pendingCleanGroups = []
+        guard !groups.isEmpty else { return }
+        startCleaning(groups)
+    }
+
+    private static func runningApps(in groups: [CleanGroup]) -> [PendingQuit] {
+        var seen = Set<String>()
+        var result: [PendingQuit] = []
+        for g in groups {
+            var ids: [String] = g.categoryAppIDs.values.map { $0 }
+            if let b = g.runningBundleID { ids.append(b) }
+            if let b = g.appBundleID { ids.append(b) }
+            for id in ids where !seen.contains(id) && FileUtils.isRunning(bundleID: id) {
+                seen.insert(id)
+                result.append(PendingQuit(bundleID: id,
+                                          name: AppCatalog.shared.name(forBundleID: id) ?? id))
+            }
+        }
+        return result
+    }
+
+    private func startCleaning(_ sourceGroups: [CleanGroup]) {
         var ordered: [CleanItem] = []
         var stageOfPath: [String: Int] = [:]
         for (i, g) in sourceGroups.enumerated() {
@@ -351,6 +420,13 @@ final class ScanStore: ObservableObject {
     }
 
     #if DEBUG
+    /// Dựng hộp thoại "ứng dụng đang mở" để xem giao diện — không dọn gì cả.
+    func debugShowQuitDialog() {
+        let running = Self.runningApps(in: groups)
+        pendingQuit = running.first
+            ?? PendingQuit(bundleID: "com.google.Chrome", name: "Google Chrome")
+    }
+
     /// Dựng màn "đang dọn" bằng dữ liệu giả để xem giao diện — không xoá bất cứ thứ gì.
     func debugDemoClean() {
         let src = groups.filter { $0.items.contains(where: \.isSelected) }
