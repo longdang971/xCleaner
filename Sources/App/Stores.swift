@@ -59,6 +59,7 @@ final class ScanStore: ObservableObject {
     /// Những mục vừa dọn xong, mới nhất ở cuối.
     @Published var cleaned: [CleanedEntry] = []
     @Published var cleanTotal: Int = 0
+    @Published var cleanFreed: Int64 = 0
 
     private let cleanCancel = CancelToken()
 
@@ -216,27 +217,41 @@ final class ScanStore: ObservableObject {
 
     /// - Parameter groupID: chỉ dọn nhóm này; bỏ trống thì dọn mọi thứ đang được chọn.
     func clean(groupID: String? = nil) {
-        let items: [CleanItem]
-        if let groupID, let g = groups.first(where: { $0.id == groupID }) {
-            items = g.items.filter(\.isSelected)
-        } else {
-            items = selectedItems
+        // Xếp theo nhóm để lúc dọn, các ô lần lượt sáng lên đúng thứ tự người dùng nhìn thấy.
+        let sourceGroups = groupID == nil
+            ? groups.filter { $0.items.contains(where: \.isSelected) }
+            : groups.filter { $0.id == groupID && $0.items.contains(where: \.isSelected) }
+        guard !sourceGroups.isEmpty else { return }
+
+        var ordered: [CleanItem] = []
+        var stageOfPath: [String: Int] = [:]
+        for (i, g) in sourceGroups.enumerated() {
+            for item in g.items where item.isSelected {
+                stageOfPath[item.url.path] = i
+                ordered.append(item)
+            }
         }
-        guard !items.isEmpty else { return }
 
         phase = .cleaning
         progress = 0
         statusText = "Đang dọn…"
         cleaned = []
-        cleanTotal = items.count
+        cleanTotal = ordered.count
+        cleanFreed = 0
         cleanCancel.reset()
+        stages = sourceGroups.map {
+            ScanStage(id: $0.id, title: $0.title, icon: $0.icon, appBundleID: $0.appBundleID)
+        }
+        currentStage = 0
+        stageBytes = [:]
 
         let request = Remover.Request(
-            items: items,
+            items: ordered,
             moveToTrash: settings.moveToTrash,
-            adminPrompt: "xCleaner cần quyền quản trị để xoá \(items.filter(\.requiresAdmin).count) mục trong thư mục hệ thống.",
+            adminPrompt: "xCleaner cần quyền quản trị để xoá \(ordered.filter(\.requiresAdmin).count) mục trong thư mục hệ thống.",
             cancel: cleanCancel)
         let throttle = ProgressThrottle(fps: 15)
+        var perStage: [Int: Int64] = [:]
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Remover.perform(request, progress: { fraction, message in
@@ -246,24 +261,38 @@ final class ScanStore: ObservableObject {
                     self.statusText = message
                 }
             }, itemFinished: { item, ok in
+                let idx = stageOfPath[item.url.path] ?? 0
+                if ok { perStage[idx, default: 0] += item.size }
+                let snapshot = perStage
                 DispatchQueue.main.async {
                     guard let self else { return }
+                    // Sang ô khác thì chốt ô cũ lại — nó sẽ thu về và hiện số đã dọn.
+                    if self.currentStage != idx {
+                        if let old = self.currentStage {
+                            self.stageBytes[old] = snapshot[old] ?? 0
+                        }
+                        withAnimation(Motion.standard) { self.currentStage = idx }
+                    }
                     self.cleaned.append(CleanedEntry(name: item.name, bytes: item.size,
-                                                     failed: !ok))
-                    // Giữ danh sách ngắn: người dùng chỉ nhìn vài dòng cuối.
-                    if self.cleaned.count > 60 { self.cleaned.removeFirst(self.cleaned.count - 60) }
+                                                     failed: !ok, stageIndex: idx))
+                    if ok { self.cleanFreed += item.size }
+                    if self.cleaned.count > 400 { self.cleaned.removeFirst(200) }
                 }
             })
             DispatchQueue.main.async {
                 guard let self else { return }
+                for (i, v) in perStage where self.stageBytes[i] == nil { self.stageBytes[i] = v }
+                if let last = self.currentStage, self.stageBytes[last] == nil {
+                    self.stageBytes[last] = perStage[last] ?? 0
+                }
                 withAnimation(Motion.standard) {
                     self.outcome = result
                     self.phase = .done
                     self.progress = 1
+                    self.currentStage = nil
                     self.statusText = result.wasCancelled && result.removedCount == 0
                         ? "Đã huỷ" : "Đã dọn xong"
-                    // Bỏ các mục đã xử lý khỏi danh sách.
-                    let removed = Set(items.map(\.url.path))
+                    let removed = Set(ordered.map(\.url.path))
                     for gi in self.groups.indices {
                         self.groups[gi].items.removeAll {
                             removed.contains($0.url.path) && !FileUtils.exists($0.url)
@@ -286,6 +315,9 @@ final class ScanStore: ObservableObject {
             progress = 0
             liveBytes = 0
             statusText = ""
+            stages = []
+            currentStage = nil
+            stageBytes = [:]
             phase = .idle
         }
     }
@@ -293,16 +325,35 @@ final class ScanStore: ObservableObject {
     #if DEBUG
     /// Dựng màn "đang dọn" bằng dữ liệu giả để xem giao diện — không xoá bất cứ thứ gì.
     func debugDemoClean() {
-        let items = Array(selectedItems.prefix(40))
-        guard !items.isEmpty else { return }
+        let src = groups.filter { $0.items.contains(where: \.isSelected) }
+        guard !src.isEmpty else { return }
+        var plan: [(Int, CleanItem)] = []
+        for (i, g) in src.enumerated() {
+            for item in g.items.filter(\.isSelected).prefix(8) { plan.append((i, item)) }
+        }
         cleaned = []
-        cleanTotal = items.count
+        cleanTotal = plan.count
+        cleanFreed = 0
+        stages = src.map { ScanStage(id: $0.id, title: $0.title, icon: $0.icon,
+                                     appBundleID: $0.appBundleID) }
+        stageBytes = [:]
+        currentStage = 0
         phase = .cleaning
-        for (i, item) in items.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12 * Double(i)) { [weak self] in
+
+        var acc: [Int: Int64] = [:]
+        for (n, entry) in plan.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22 * Double(n)) { [weak self] in
                 guard let self else { return }
-                self.cleaned.append(CleanedEntry(name: item.name, bytes: item.size))
-                self.progress = Double(i + 1) / Double(items.count)
+                let (idx, item) = entry
+                if self.currentStage != idx {
+                    if let old = self.currentStage { self.stageBytes[old] = acc[old] ?? 0 }
+                    withAnimation(Motion.standard) { self.currentStage = idx }
+                }
+                acc[idx, default: 0] += item.size
+                self.cleanFreed += item.size
+                self.cleaned.append(CleanedEntry(name: item.name, bytes: item.size,
+                                                 stageIndex: idx))
+                self.progress = Double(n + 1) / Double(plan.count)
             }
         }
     }

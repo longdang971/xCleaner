@@ -74,6 +74,20 @@ final class StageReporter {
         send(message: "")
     }
 
+    /// Chuyển sang chặng khác nếu đang ở chặng khác; gọi được liên tục mà không reset đồng hồ.
+    func jump(to index: Int) {
+        guard current != index else { return }
+        begin(index)
+    }
+
+    /// Ghi nhận dung lượng của một chặng đã xong mà không chờ thêm.
+    func mark(_ index: Int, _ size: Int64) {
+        guard bytes[index] == nil else { return }
+        bytes[index] = size
+        found += size
+        send(message: "")
+    }
+
     /// Báo xong toàn bộ.
     func done() {
         emit(ScanProgress(fraction: 1, message: "", bytesFound: found,

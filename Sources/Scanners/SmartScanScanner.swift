@@ -8,35 +8,50 @@ import Foundation
 /// còn chi tiết thì bấm "Xem" là có.
 struct SmartScanScanner: ModuleScanner {
 
+    /// Các ô hiện lúc quét khớp với các thẻ hiện sau khi quét — cùng tên, cùng thứ tự,
+    /// nên người dùng thấy đúng những ô đó lần lượt phình lên rồi thu lại.
     var stages: [ScanStage] {
-        [.init(id: "junk", title: "Rác hệ thống", icon: "trash.slash.fill"),
+        [.init(id: "user-cache", title: "Bộ nhớ đệm ứng dụng", icon: "shippingbox.fill"),
+         .init(id: "logs", title: "Nhật ký", icon: "doc.text.fill"),
+         .init(id: "crash", title: "Báo cáo sự cố", icon: "exclamationmark.triangle.fill"),
+         .init(id: "sys-cache", title: "Bộ nhớ đệm hệ thống", icon: "lock.shield.fill"),
          .init(id: "trash", title: "Thùng rác", icon: "trash.fill"),
-         .init(id: "web", title: "Trình duyệt", icon: "globe")]
+         .init(id: "browsers", title: "Trình duyệt", icon: "globe")]
     }
+
+    /// Chặng nội bộ của bộ quét rác hệ thống ứng với ô nào ở đây.
+    /// Hai loại nhật ký gộp về một ô, phần công cụ lập trình bị lọc nên không có ô riêng.
+    private static let junkStageMap: [Int: Int] = [0: 0, 1: 1, 2: 1, 3: 2, 4: 3]
 
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var bytes: Int64 = 0
-        let stage = StageReporter(total: 3, emit: progress)
+        let stage = StageReporter(total: 6, emit: progress)
 
         stage.begin(0)
         let junk = SystemJunkScanner()
-            .scan(cancel: cancel) { stage.working($0.message) }
+            .scan(cancel: cancel) { p in
+                if let i = p.stageIndex, let mapped = Self.junkStageMap[i] { stage.jump(to: mapped) }
+                let sb = p.stageBytes
+                if let v = sb[0] { stage.mark(0, v) }
+                if let a = sb[1], let b = sb[2] { stage.mark(1, a + b) }
+                if let v = sb[3] { stage.mark(2, v) }
+                if let v = sb[4] { stage.mark(3, v) }
+                stage.working(p.message)
+            }
             .filter { $0.safety == .safe }
-        let junkBytes = junk.reduce(0) { $0 + $1.totalSize }
-        bytes += junkBytes
-        stage.finish(0, bytes: junkBytes)
+        bytes += junk.reduce(0) { $0 + $1.totalSize }
         if cancel.isCancelled { return junk }
 
-        stage.begin(1)
+        stage.begin(4)
         let trash = TrashDownloadsScanner()
             .scan(cancel: cancel) { stage.working($0.message) }
             .filter { $0.id == "trash" }
         let trashBytes = trash.reduce(0) { $0 + $1.totalSize }
         bytes += trashBytes
-        stage.finish(1, bytes: trashBytes)
+        stage.finish(4, bytes: trashBytes)
         if cancel.isCancelled { return junk + trash }
 
-        stage.begin(2)
+        stage.begin(5)
         let browsers = BrowserPrivacyScanner().scan(cancel: cancel) { stage.working($0.message) }
 
         var result: [CleanGroup] = []
@@ -45,10 +60,10 @@ struct SmartScanScanner: ModuleScanner {
         result += trash
         if let web = mergedBrowsers(from: browsers) {
             bytes += web.totalSize
-            stage.finish(2, bytes: web.totalSize)
+            stage.finish(5, bytes: web.totalSize)
             result.append(web)
         } else {
-            stage.finish(2, bytes: 0)
+            stage.finish(5, bytes: 0)
         }
 
         // Thẻ nào nhiều dung lượng nhất lên trước, để hàng đầu luôn là thứ đáng nhìn nhất.

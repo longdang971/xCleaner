@@ -9,9 +9,9 @@ struct SystemJunkScanner: ModuleScanner {
     var stages: [ScanStage] {
         [.init(id: "user-cache", title: "Bộ nhớ đệm ứng dụng", icon: "shippingbox.fill"),
          .init(id: "user-logs", title: "Nhật ký người dùng", icon: "doc.text.fill"),
+         .init(id: "sys-logs", title: "Nhật ký hệ thống", icon: "server.rack"),
          .init(id: "crash", title: "Báo cáo sự cố", icon: "exclamationmark.triangle.fill"),
          .init(id: "sys-cache", title: "Bộ nhớ đệm hệ thống", icon: "lock.shield.fill"),
-         .init(id: "sys-logs", title: "Nhật ký hệ thống", icon: "server.rack"),
          .init(id: "dev-junk", title: "Công cụ lập trình", icon: "hammer.fill"),
          .init(id: "misc", title: "Trạng thái cửa sổ", icon: "macwindow")]
     }
@@ -65,44 +65,8 @@ struct SystemJunkScanner: ModuleScanner {
         stage.finish(1, bytes: userLogs.reduce(0) { $0 + $1.size })
         if cancel.isCancelled { return groups }
 
-        // 3. Báo cáo sự cố
-        report(2, steps, "Báo cáo sự cố…")
-        var crash: [CleanItem] = []
-        for dir in [FileUtils.homePath("Library/Logs/DiagnosticReports"),
-                    URL(fileURLWithPath: "/Library/Logs/DiagnosticReports")] {
-            for f in FileUtils.children(of: dir) where !f.lastPathComponent.hasPrefix(".") {
-                if cancel.isCancelled { break }
-                if let i = makeItem(f, detail: Fmt.relativeAge(FileUtils.modificationDate(of: f)),
-                                    cancel: cancel) { crash.append(i) }
-            }
-        }
-        crash.sort { $0.size > $1.size }
-        found += crash.reduce(0) { $0 + $1.size }
-        if !crash.isEmpty {
-            groups.append(CleanGroup(id: "crash", title: "Báo cáo sự cố",
-                                     subtitle: "Biên bản khi app hoặc hệ thống gặp lỗi",
-                                     icon: "exclamationmark.triangle.fill", safety: .safe, items: crash))
-        }
-        stage.finish(2, bytes: crash.reduce(0) { $0 + $1.size })
-        if cancel.isCancelled { return groups }
-
-        // 4. Bộ nhớ đệm hệ thống (cần quyền quản trị)
-        report(3, steps, "Bộ nhớ đệm hệ thống…")
-        let systemCache = itemsFromChildren(
-            of: URL(fileURLWithPath: "/Library/Caches"),
-            cancel: cancel,
-            progress: { report(3, steps, "Hệ thống: \($0)") })
-        found += systemCache.reduce(0) { $0 + $1.size }
-        if !systemCache.isEmpty {
-            groups.append(CleanGroup(id: "sys-cache", title: "Bộ nhớ đệm hệ thống",
-                                     subtitle: "Nằm trong /Library — cần mật khẩu quản trị",
-                                     icon: "lock.shield.fill", safety: .safe, items: systemCache))
-        }
-        stage.finish(3, bytes: systemCache.reduce(0) { $0 + $1.size })
-        if cancel.isCancelled { return groups }
-
-        // 5. Nhật ký hệ thống (cần quyền quản trị)
-        report(4, steps, "Nhật ký hệ thống…")
+        // 3. Nhật ký hệ thống (cần quyền quản trị)
+        report(2, steps, "Nhật ký hệ thống…")
         var sysLogs = itemsFromChildren(of: URL(fileURLWithPath: "/Library/Logs"), cancel: cancel)
         // Trong /var/log chỉ đụng tới log đã xoay vòng, tuyệt đối không xoá log đang mở.
         for f in FileUtils.children(of: URL(fileURLWithPath: "/private/var/log")) {
@@ -125,7 +89,43 @@ struct SystemJunkScanner: ModuleScanner {
                                      subtitle: "Log của macOS — cần mật khẩu quản trị",
                                      icon: "server.rack", safety: .safe, items: sysLogs))
         }
-        stage.finish(4, bytes: sysLogs.reduce(0) { $0 + $1.size })
+        stage.finish(2, bytes: sysLogs.reduce(0) { $0 + $1.size })
+        if cancel.isCancelled { return groups }
+
+        // 4. Báo cáo sự cố
+        report(3, steps, "Báo cáo sự cố…")
+        var crash: [CleanItem] = []
+        for dir in [FileUtils.homePath("Library/Logs/DiagnosticReports"),
+                    URL(fileURLWithPath: "/Library/Logs/DiagnosticReports")] {
+            for f in FileUtils.children(of: dir) where !f.lastPathComponent.hasPrefix(".") {
+                if cancel.isCancelled { break }
+                if let i = makeItem(f, detail: Fmt.relativeAge(FileUtils.modificationDate(of: f)),
+                                    cancel: cancel) { crash.append(i) }
+            }
+        }
+        crash.sort { $0.size > $1.size }
+        found += crash.reduce(0) { $0 + $1.size }
+        if !crash.isEmpty {
+            groups.append(CleanGroup(id: "crash", title: "Báo cáo sự cố",
+                                     subtitle: "Biên bản khi app hoặc hệ thống gặp lỗi",
+                                     icon: "exclamationmark.triangle.fill", safety: .safe, items: crash))
+        }
+        stage.finish(3, bytes: crash.reduce(0) { $0 + $1.size })
+        if cancel.isCancelled { return groups }
+
+        // 5. Bộ nhớ đệm hệ thống (cần quyền quản trị)
+        report(4, steps, "Bộ nhớ đệm hệ thống…")
+        let systemCache = itemsFromChildren(
+            of: URL(fileURLWithPath: "/Library/Caches"),
+            cancel: cancel,
+            progress: { report(4, steps, "Hệ thống: \($0)") })
+        found += systemCache.reduce(0) { $0 + $1.size }
+        if !systemCache.isEmpty {
+            groups.append(CleanGroup(id: "sys-cache", title: "Bộ nhớ đệm hệ thống",
+                                     subtitle: "Nằm trong /Library — cần mật khẩu quản trị",
+                                     icon: "lock.shield.fill", safety: .safe, items: systemCache))
+        }
+        stage.finish(4, bytes: systemCache.reduce(0) { $0 + $1.size })
         if cancel.isCancelled { return groups }
 
         // 6. Rác của công cụ lập trình

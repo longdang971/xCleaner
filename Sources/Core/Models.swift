@@ -220,12 +220,15 @@ struct CleanedEntry: Identifiable, Equatable {
     let name: String
     let bytes: Int64
     let failed: Bool
+    /// Ô (nhóm) mà mục này thuộc về, để danh sách chỉ hiện phần của ô đang dọn.
+    let stageIndex: Int
 
-    init(name: String, bytes: Int64, failed: Bool = false) {
+    init(name: String, bytes: Int64, failed: Bool = false, stageIndex: Int = 0) {
         self.id = UUID()
         self.name = name
         self.bytes = bytes
         self.failed = failed
+        self.stageIndex = stageIndex
     }
 
     static func == (l: CleanedEntry, r: CleanedEntry) -> Bool { l.id == r.id }

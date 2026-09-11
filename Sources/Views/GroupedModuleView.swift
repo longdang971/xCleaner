@@ -32,10 +32,13 @@ struct GroupedModuleView: View {
             case .idle, .scanning:
                 heroScreen
             case .cleaning:
-                CleaningView(entries: store.cleaned,
+                CleaningView(stages: store.stages,
+                             currentStage: store.currentStage,
+                             stageBytes: store.stageBytes,
+                             entries: store.cleaned.filter { $0.stageIndex == store.currentStage },
                              total: store.cleanTotal,
-                             statusText: store.statusText,
-                             progress: store.progress,
+                             doneCount: store.cleaned.count,
+                             freed: store.cleanFreed,
                              skin: skin,
                              onStop: { store.cancelClean() })
                     .transition(.opacity)
