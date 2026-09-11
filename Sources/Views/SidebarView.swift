@@ -136,8 +136,8 @@ struct SidebarView: View {
     }
 }
 
-/// Biểu tượng trong sidebar: bình thường chỉ là ký hiệu trơn, mục đang chọn mới được đặt
-/// vào khối màu — màu ở sidebar nên dành riêng cho chỗ người dùng đang đứng.
+/// Biểu tượng trong sidebar: luôn là ký hiệu trơn, không khối, không viền.
+/// Mục đang chọn thì chính ký hiệu được tô màu của mục đó.
 struct SidebarGlyph: View {
     let icon: String
     let colors: [Color]
@@ -145,25 +145,15 @@ struct SidebarGlyph: View {
     var hovering: Bool = false
 
     var body: some View {
-        ZStack {
-            if active {
-                Squircle()
-                    .fill(LinearGradient(colors: [colors[0], colors[1]],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                Squircle()
-                    .fill(LinearGradient(colors: [.white.opacity(0.45), .clear],
-                                         startPoint: .top, endPoint: .center))
-                Squircle()
-                    .strokeBorder(Color.white.opacity(0.45), lineWidth: 0.8)
-            }
-
-            Image(systemName: icon)
-                .font(.system(size: active ? 13 : 15, weight: active ? .semibold : .medium))
-                .foregroundStyle(active ? .white : Color.white.opacity(hovering ? 0.95 : 0.7))
-                .shadow(color: active ? colors[2].opacity(0.7) : .clear, radius: 2, y: 1)
-        }
-        .frame(width: 32, height: 32)
-        .shadow(color: active ? colors[1].opacity(0.45) : .clear, radius: 6, y: 2)
-        .animation(Motion.gentle, value: active)
+        Image(systemName: icon)
+            .font(.system(size: active ? 17 : 15.5, weight: active ? .semibold : .medium))
+            .foregroundStyle(active
+                             ? AnyShapeStyle(LinearGradient(colors: [colors[0], colors[1]],
+                                                            startPoint: .top,
+                                                            endPoint: .bottom))
+                             : AnyShapeStyle(Color.white.opacity(hovering ? 0.95 : 0.66)))
+            .shadow(color: active ? colors[1].opacity(0.6) : .clear, radius: 7)
+            .frame(width: 32, height: 32)
+            .animation(Motion.gentle, value: active)
     }
 }
