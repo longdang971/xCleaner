@@ -75,7 +75,8 @@ struct UninstallerView: View {
                 Text(store.statusText).font(.system(size: 11)).foregroundStyle(Palette.textFaint)
                     .lineLimit(1).frame(maxWidth: 220, alignment: .leading)
             } else {
-                Text(store.statusText).font(.system(size: 11)).foregroundStyle(Palette.textFaint)
+                Text("\(store.filteredApps.count) ứng dụng")
+                    .font(.system(size: 11)).foregroundStyle(Palette.textFaint)
                 PillButton(title: "Làm mới", systemImage: "arrow.clockwise") { store.load() }
             }
         }
@@ -163,12 +164,120 @@ struct UninstallerView: View {
             }
             .glass()
         } else {
-            EmptyStateView(icon: "shippingbox.fill",
-                           title: "Chọn một ứng dụng",
-                           message: "xCleaner sẽ tìm mọi tệp mà ứng dụng đó để lại: dữ liệu, bộ nhớ đệm, tuỳ chọn, tác vụ nền và biên nhận cài đặt.",
-                           gem: skin.gem)
-                .glass()
+            overview.glass()
         }
+    }
+}
+
+// MARK: - Bảng tổng quan khi chưa chọn app nào
+
+extension UninstallerView {
+    /// Chỗ này trước đây chỉ có một câu "chọn một ứng dụng" trên khoảng trống mênh mông.
+    /// Giờ nó nói luôn máy đang có bao nhiêu app, chiếm bao nhiêu chỗ, và app nào lâu rồi
+    /// không mở — chính là thứ người ta vào đây để tìm.
+    var overview: some View {
+        let apps = store.filteredApps
+        let total = apps.reduce(Int64(0)) { $0 + $1.appSize }
+        let stale = apps.filter { app in
+            guard let d = app.lastUsed else { return false }
+            return Date().timeIntervalSince(d) > 90 * 86_400
+        }
+        let byAge = apps
+            .filter { $0.lastUsed != nil }
+            .sorted { ($0.lastUsed ?? .distantPast) < ($1.lastUsed ?? .distantPast) }
+        // Nếu có app quá 90 ngày thì chỉ liệt kê đúng những app đó, để con số phía trên
+        // và danh sách bên dưới nói cùng một chuyện.
+        let oldest = stale.isEmpty ? Array(byAge.prefix(4))
+                                   : Array(byAge.filter { app in stale.contains { $0.url == app.url } }
+                                                .prefix(4))
+        let listTitle = stale.isEmpty ? "ÍT DÙNG GẦN ĐÂY" : "LÂU RỒI KHÔNG MỞ"
+
+        return VStack(spacing: 0) {
+            HeroEmblem(icon: "shippingbox.fill", gem: skin.gem, size: 104)
+                .padding(.top, 8)
+
+            Text("Chọn một ứng dụng để gỡ")
+                .font(.system(size: 19, weight: .bold))
+                .foregroundStyle(.white)
+
+            Text("xCleaner tìm mọi tệp ứng dụng đó để lại: dữ liệu, bộ nhớ đệm, tuỳ chọn, tác vụ nền và biên nhận cài đặt.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Palette.textSecond)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+                .padding(.top, 6)
+
+            HStack(spacing: 12) {
+                statBox(value: "\(apps.count)", label: "ứng dụng")
+                statBox(value: Fmt.size(total), label: "tổng dung lượng")
+                statBox(value: "\(stale.count)", label: "lâu không mở")
+            }
+            .padding(.top, 22)
+            .padding(.horizontal, 24)
+
+            if !oldest.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(listTitle)
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(0.8)
+                        .foregroundStyle(Palette.textFaint)
+                        .padding(.bottom, 8)
+
+                    ForEach(Array(oldest), id: \.url) { app in
+                        Button {
+                            withAnimation(Motion.gentle) { store.select(app) }
+                        } label: {
+                            HStack(spacing: 10) {
+                                AppIconView(url: app.url, size: 22)
+                                Text(app.name)
+                                    .font(.system(size: 12.5, weight: .medium))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                Spacer(minLength: 6)
+                                Text(Fmt.relativeAge(app.lastUsed))
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Palette.textSecond)
+                                Text(Fmt.size(app.appSize))
+                                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                    .foregroundStyle(Color.white.opacity(0.9))
+                                    .frame(width: 72, alignment: .trailing)
+                            }
+                            .padding(.horizontal, 12)
+                            .frame(height: 36)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 12)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.07)))
+                .padding(.top, 20)
+                .padding(.horizontal, 24)
+                .frame(maxWidth: 520)
+            }
+
+            Spacer(minLength: 12)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 18)
+    }
+
+    private func statBox(value: String, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 19, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Text(label)
+                .font(.system(size: 10.5))
+                .foregroundStyle(Palette.textSecond)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color.white.opacity(0.07)))
     }
 }
 
