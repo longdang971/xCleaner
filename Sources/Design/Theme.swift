@@ -130,7 +130,8 @@ enum Palette {
 enum Metrics {
     static let cardRadius: CGFloat = 20
     static let rowRadius: CGFloat = 10
-    static let sidebarWidth: CGFloat = 252
+    static let sidebarWidth: CGFloat = 76
+    static let sidebarExpanded: CGFloat = 252
     static let contentPadding: CGFloat = 26
     static let titleBarHeight: CGFloat = 46
 }

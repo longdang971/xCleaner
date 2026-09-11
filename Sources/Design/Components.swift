@@ -730,3 +730,56 @@ private struct IconToolbarButton: View {
         .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
     }
 }
+
+
+// MARK: - Khung thẻ dùng chung
+
+/// Nền, biểu tượng in chìm, viền và bóng của một thẻ. Thẻ kết quả, thẻ lúc quét và thẻ lúc dọn
+/// đều dùng chung khung này nên ba màn hình trông như một.
+struct TileSurface: ViewModifier {
+    let gem: [Color]
+    var icon: String? = nil
+    var bundleID: String? = nil
+    var highlighted: Bool = false
+    var dimmed: Bool = false
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                ZStack(alignment: .topTrailing) {
+                    LinearGradient(colors: [gem[1].opacity(highlighted ? 0.92 : 0.82),
+                                            gem[2].opacity(highlighted ? 0.78 : 0.62)],
+                                   startPoint: .topTrailing, endPoint: .bottomLeading)
+
+                    if let icon {
+                        GroupGlyph(bundleID: bundleID, fallback: icon,
+                                   size: bundleID == nil ? 72 : 80,
+                                   opacity: highlighted ? 0.26 : 0.19)
+                            .padding(.trailing, 14)
+                            .padding(.top, 12)
+                    }
+
+                    LinearGradient(colors: [.clear, .black.opacity(0.30)],
+                                   startPoint: .topTrailing, endPoint: .bottomLeading)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(highlighted ? 0.42 : 0.18),
+                                  lineWidth: highlighted ? 1.5 : 1)
+            )
+            .shadow(color: highlighted ? gem[1].opacity(0.55) : .black.opacity(0.24),
+                    radius: highlighted ? 22 : 16, y: 7)
+            .opacity(dimmed ? 0.55 : 1)
+            .saturation(dimmed ? 0.7 : 1)
+    }
+}
+
+extension View {
+    func tileSurface(gem: [Color], icon: String? = nil, bundleID: String? = nil,
+                     highlighted: Bool = false, dimmed: Bool = false) -> some View {
+        modifier(TileSurface(gem: gem, icon: icon, bundleID: bundleID,
+                             highlighted: highlighted, dimmed: dimmed))
+    }
+}

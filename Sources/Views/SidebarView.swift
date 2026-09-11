@@ -6,6 +6,15 @@ struct SidebarView: View {
     @Binding var selection: CleanModule
 
     @State private var hovered: CleanModule?
+    @State private var expanded = {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["XCLEANER_SIDEBAR"] == "expanded"
+        #else
+        return false
+        #endif
+    }()
+
+    private var width: CGFloat { expanded ? Metrics.sidebarExpanded : Metrics.sidebarWidth }
 
     private let cleaning: [CleanModule] = [.smartScan, .systemJunk, .trashDownloads, .privacy]
     private let tools: [CleanModule] = [.uninstaller, .largeOld, .duplicates]
@@ -27,21 +36,27 @@ struct SidebarView: View {
 
             Spacer(minLength: 16)
 
-            DiskUsageRing(expanded: true)
-                .padding(.leading, 22)
+            DiskUsageRing(expanded: expanded)
+                .padding(.leading, expanded ? 26 : 24)
                 .padding(.bottom, 12)
 
             settingsRow
                 .padding(.bottom, 14)
         }
-        .frame(width: Metrics.sidebarWidth, alignment: .leading)
+        .frame(width: width, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .top)
         .background {
-            // Chỉ tối đi rất nhẹ: sidebar của CleanMyMac gần như chung nền với nội dung,
-            // ranh giới đến từ viên thuốc và bóng chứ không từ một mảng màu khác.
-            LinearGradient(colors: [.black.opacity(0.10), .black.opacity(0.20)],
+            // Thu gọn thì gần như chung nền với nội dung; nở ra thì phải đục hẳn,
+            // nếu không chữ của thẻ bên dưới sẽ hiện xuyên qua.
+            LinearGradient(colors: [.black.opacity(expanded ? 0.72 : 0.12),
+                                    .black.opacity(expanded ? 0.82 : 0.22)],
                            startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
+        }
+        .shadow(color: .black.opacity(expanded ? 0.35 : 0), radius: 24, x: 6)
+        .onHover { inside in
+            withAnimation(Motion.standard) { expanded = inside }
+            if !inside { hovered = nil }
         }
     }
 
@@ -56,14 +71,18 @@ struct SidebarView: View {
             HStack(spacing: 14) {
                 SidebarGlyph(icon: m.icon, colors: skin.gem, dimmed: !isSelected && hovered != m)
 
-                Text(m.title)
-                    .font(.system(size: 14.5, weight: isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? .white : Color.white.opacity(0.88))
-                    .lineLimit(1)
+                if expanded {
+                    Text(m.title)
+                        .font(.system(size: 14.5, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? .white : Color.white.opacity(0.88))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .transition(.opacity)
+                }
 
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, expanded ? 16 : 10)
             .frame(height: 52)
             .background {
                 if isSelected {
@@ -81,7 +100,8 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, expanded ? 12 : 8)
+        .help(expanded ? "" : m.title)
         .onHover { h in
             withAnimation(Motion.gentle) { hovered = h ? m : (hovered == m ? nil : hovered) }
         }
@@ -96,12 +116,15 @@ struct SidebarView: View {
                     .font(.system(size: 14))
                     .foregroundStyle(Color.white.opacity(0.75))
                     .frame(width: 32)
-                Text("Tuỳ chọn")
-                    .font(.system(size: 13.5))
-                    .foregroundStyle(Color.white.opacity(0.75))
+                if expanded {
+                    Text("Tuỳ chọn")
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(Color.white.opacity(0.75))
+                        .fixedSize().transition(.opacity)
+                }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, expanded ? 16 : 10)
             .frame(height: 38)
             .contentShape(Rectangle())
         }
