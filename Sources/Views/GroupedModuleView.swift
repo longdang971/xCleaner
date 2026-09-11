@@ -27,6 +27,7 @@ struct GroupedModuleView: View {
                              currentFile: store.statusText,
                              totalBytes: store.liveBytes,
                              found: store.found,
+                             progress: store.progress,
                              skin: skin,
                              onStop: { store.cancelScan() })
                     .transition(.opacity)
@@ -40,6 +41,7 @@ struct GroupedModuleView: View {
                              total: store.cleanTotal,
                              doneCount: store.cleaned.count,
                              freed: store.cleanFreed,
+                             progress: store.progress,
                              skin: skin,
                              onStop: { store.cancelClean() })
                     .transition(.opacity)

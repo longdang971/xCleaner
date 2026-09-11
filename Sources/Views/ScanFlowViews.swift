@@ -217,6 +217,7 @@ struct ScanningView: View {
     let currentFile: String
     let totalBytes: Int64
     let found: [CleanedEntry]
+    let progress: Double
     let skin: ModuleSkin
     var onStop: () -> Void
 
@@ -232,7 +233,8 @@ struct ScanningView: View {
                 .padding(.horizontal, Metrics.contentPadding)
                 .padding(.bottom, 18)
 
-            CircleActionButton(title: "Dừng", accent: skin.action, action: onStop)
+            CircleActionButton(title: "Dừng", accent: skin.action,
+                               progress: progress, action: onStop)
                 .padding(.bottom, 22)
         }
     }
@@ -259,8 +261,6 @@ struct ScanningView: View {
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white)
             }
-            Text("\(min(stageBytes.count + 1, stages.count))/\(stages.count) chặng")
-                .font(.system(size: 12.5)).foregroundStyle(Palette.textSecond)
         }
     }
 }
@@ -275,6 +275,7 @@ struct CleaningView: View {
     let total: Int
     let doneCount: Int
     let freed: Int64
+    let progress: Double
     let skin: ModuleSkin
     var onStop: () -> Void
 
@@ -292,7 +293,8 @@ struct CleaningView: View {
                 .padding(.horizontal, Metrics.contentPadding)
                 .padding(.bottom, 18)
 
-            CircleActionButton(title: "Dừng", accent: skin.action, action: onStop)
+            CircleActionButton(title: "Dừng", accent: skin.action,
+                               progress: progress, action: onStop)
                 .padding(.bottom, 22)
         }
     }

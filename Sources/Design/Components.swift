@@ -216,6 +216,8 @@ struct CircleActionButton: View {
     var title: String
     var accent: Color
     var isEnabled: Bool = true
+    /// Có giá trị thì vẽ một vòng trắng chạy quanh nút theo tiến độ.
+    var progress: Double? = nil
     var action: () -> Void
 
     @State private var hovering = false
@@ -239,6 +241,20 @@ struct CircleActionButton: View {
                     .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
             }
             .frame(width: 84, height: 84)
+            .overlay {
+                if let progress {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white.opacity(0.22), lineWidth: 3)
+                        Circle()
+                            .trim(from: 0, to: max(0.004, min(1, progress)))
+                            .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .animation(Motion.standard, value: progress)
+                    }
+                    .frame(width: 100, height: 100)
+                }
+            }
             // Quầng tối đặt ở nền chứ không nằm trong ZStack: một con có kích thước cứng
             // sẽ kéo cả ZStack giãn ra theo nó, và nút phình to gấp đôi.
             .background(
