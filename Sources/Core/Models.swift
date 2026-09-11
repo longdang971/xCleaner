@@ -149,6 +149,8 @@ struct CleanGroup: Identifiable {
     var needsFullDiskAccess: Bool = false
     /// Ứng dụng mà nhóm này thuộc về — dùng biểu tượng thật của nó thay cho ký hiệu chung.
     var appBundleID: String? = nil
+    /// Với nhóm gộp nhiều ứng dụng: phần nào thuộc bundle id nào.
+    var categoryAppIDs: [String: String] = [:]
 
     var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
     var selectedSize: Int64 { items.filter(\.isSelected).reduce(0) { $0 + $1.size } }

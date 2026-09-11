@@ -618,3 +618,66 @@ struct GroupGlyph: View {
         }
     }
 }
+
+
+// MARK: - Tiêu đề màn kết quả
+
+/// Một con số lớn cho thứ người dùng quan tâm — dung lượng sắp được dọn — rồi mới tới ngữ cảnh.
+/// Cố tình không nhắc lại dung lượng ở dòng phụ: đọc hai con số MB cạnh nhau chỉ gây phân vân.
+struct ResultHeadline<Trailing: View>: View {
+    var selectedBytes: Int64
+    var totalBytes: Int64
+    var itemCount: Int
+    var groupCount: Int
+    var restoredCount: Int
+    @ViewBuilder var trailing: Trailing
+
+    private var hasSelection: Bool { selectedBytes > 0 }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            if hasSelection {
+                let parts = Fmt.sizeParts(selectedBytes)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(parts.value)
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                    Text(parts.unit)
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.82))
+                    Text("sẵn sàng dọn")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.82))
+                        .padding(.leading, 2)
+                }
+            } else {
+                Text("Chưa chọn mục nào")
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+
+            Text(contextLine)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Palette.textSecond)
+                .multilineTextAlignment(.center)
+
+            trailing
+        }
+        .frame(maxWidth: 640)
+        .animation(Motion.gentle, value: selectedBytes)
+    }
+
+    private var contextLine: String {
+        var parts: [String] = []
+        if hasSelection {
+            parts.append("\(itemCount) mục trong \(groupCount) nhóm")
+            let left = totalBytes - selectedBytes
+            if left > 0 { parts.append("còn \(Fmt.size(left)) chưa chọn") }
+        } else {
+            parts.append("Tìm thấy \(Fmt.size(totalBytes)) trong \(groupCount) nhóm")
+        }
+        if restoredCount > 0 { parts.append("giữ lựa chọn lần trước cho \(restoredCount) mục") }
+        return parts.joined(separator: " · ")
+    }
+}

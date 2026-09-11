@@ -57,9 +57,10 @@ struct GroupedModuleView: View {
         }
         .onChange(of: store.phase) { _ in
             #if DEBUG
-            if ProcessInfo.processInfo.environment["XCLEANER_REVIEW"] == "1",
+            if let want = ProcessInfo.processInfo.environment["XCLEANER_REVIEW"],
                store.phase == .results, reviewing == nil {
-                reviewing = store.groups.first?.id
+                reviewing = want == "1" ? store.groups.first?.id
+                                        : store.groups.first(where: { $0.id == want })?.id
             }
             #endif
         }
@@ -147,22 +148,30 @@ struct GroupedModuleView: View {
 
     private var resultsScreen: some View {
         VStack(spacing: 0) {
-            HeroHeadline(title: store.groups.isEmpty
-                            ? "Không còn gì để dọn"
-                            : "Tìm thấy \(Fmt.size(store.totalFound)) có thể dọn",
-                         subtitle: store.groups.isEmpty
-                            ? "Thử lại sau vài ngày nữa nhé."
-                            : (store.restoredCount > 0
-                               ? "Đã chọn sẵn \(Fmt.size(store.totalSelected)) trong \(store.selectedItems.count) mục · giữ lại lựa chọn lần trước cho \(store.restoredCount) mục"
-                               : "Đã chọn sẵn \(Fmt.size(store.totalSelected)) trong \(store.selectedItems.count) mục.")) {
-                HStack(spacing: 8) {
-                    PillButton(title: "Chọn tất cả") {
-                        withAnimation(Motion.snappy) { store.selectAll(true) }
+            Group {
+                if store.groups.isEmpty {
+                    HeroHeadline(title: "Không còn gì để dọn",
+                                 subtitle: "Thử lại sau vài ngày nữa nhé.") {
+                        PillButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
                     }
-                    PillButton(title: "Bỏ chọn") {
-                        withAnimation(Motion.snappy) { store.selectAll(false) }
+                } else {
+                    ResultHeadline(selectedBytes: store.totalSelected,
+                                   totalBytes: store.totalFound,
+                                   itemCount: store.selectedItems.count,
+                                   groupCount: store.groups.count,
+                                   restoredCount: store.restoredCount) {
+                        HStack(spacing: 8) {
+                            PillButton(title: "Chọn tất cả") {
+                                withAnimation(Motion.snappy) { store.selectAll(true) }
+                            }
+                            PillButton(title: "Bỏ chọn") {
+                                withAnimation(Motion.snappy) { store.selectAll(false) }
+                            }
+                            PillButton(title: "Quét lại", systemImage: "arrow.clockwise") {
+                                store.scan()
+                            }
+                        }
                     }
-                    PillButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
                 }
             }
             .padding(.top, 6)
@@ -176,19 +185,9 @@ struct GroupedModuleView: View {
             } else {
                 ZStack(alignment: .bottom) {
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 310), spacing: 14)],
-                                  spacing: 14) {
-                            ForEach(Array(store.groups.enumerated()), id: \.element.id) { idx, group in
-                                GroupTile(group: group, gem: TileGems.gem(for: idx),
-                                          onToggle: { store.toggleGroup(group.id) },
-                                          onReview: {
-                                              withAnimation(Motion.standard) { reviewing = group.id }
-                                          },
-                                          onQuitApp: { store.quitApp(groupID: group.id) })
-                            }
-                        }
-                        .padding(.horizontal, Metrics.contentPadding)
-                        .padding(.bottom, 132)
+                        tileLayout
+                            .padding(.horizontal, Metrics.contentPadding)
+                            .padding(.bottom, 132)
                     }
                     .scrollIndicators(.never)
 
@@ -199,6 +198,42 @@ struct GroupedModuleView: View {
         .overlay(alignment: .bottom) {
             if !store.groups.isEmpty { cleanButton }
         }
+    }
+
+    /// Ba thẻ nhỏ ở hàng đầu rồi các thẻ rộng hơn ở dưới — bố cục của Smart Care.
+    /// Dưới bốn nhóm thì chia đều cho đỡ trống trải.
+    @ViewBuilder
+    private var tileLayout: some View {
+        let groups = store.groups
+        if groups.count >= 4 {
+            VStack(spacing: 14) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 3),
+                          spacing: 14) {
+                    ForEach(Array(groups.prefix(3).enumerated()), id: \.element.id) { idx, group in
+                        tile(group, index: idx)
+                    }
+                }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 2),
+                          spacing: 14) {
+                    ForEach(Array(groups.dropFirst(3).enumerated()), id: \.element.id) { idx, group in
+                        tile(group, index: idx + 3)
+                    }
+                }
+            }
+        } else {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 310), spacing: 14)], spacing: 14) {
+                ForEach(Array(groups.enumerated()), id: \.element.id) { idx, group in
+                    tile(group, index: idx)
+                }
+            }
+        }
+    }
+
+    private func tile(_ group: CleanGroup, index: Int) -> some View {
+        GroupTile(group: group, gem: TileGems.gem(for: index),
+                  onToggle: { store.toggleGroup(group.id) },
+                  onReview: { withAnimation(Motion.standard) { reviewing = group.id } },
+                  onQuitApp: { store.quitApp(groupID: group.id) })
     }
 
     private var cleanButton: some View {
@@ -344,6 +379,8 @@ struct GroupDetailView: View {
                             PartCard(title: section.title,
                                      icon: section.hasCategory
                                         ? Self.icon(forPart: section.title) : group.icon,
+                                     bundleID: group.categoryAppIDs[section.title]
+                                        ?? (section.hasCategory ? nil : group.appBundleID),
                                      gem: TileGems.gem(for: gemBase + idx),
                                      items: section.items,
                                      selection: section.hasCategory
@@ -378,7 +415,7 @@ struct GroupDetailView: View {
                 }
                 HeroHeadline(title: group.title,
                          subtitle: group.needsFullDiskAccess
-                            ? "Danh sách chưa đầy đủ — macOS đang chặn đọc thư mục này"
+                            ? "Một phần danh sách bị macOS chặn — cấp Toàn quyền truy cập đĩa để thấy đủ"
                             : "\(group.selectedCount)/\(group.items.count) mục · \(Fmt.size(groupSelectedSize)) trong \(Fmt.size(group.totalSize))") {
                 HStack(spacing: 8) {
                     PillButton(title: group.selection == .all ? "Bỏ chọn tất cả" : "Chọn tất cả",
@@ -428,6 +465,7 @@ struct GroupDetailView: View {
 struct PartCard: View {
     let title: String
     let icon: String
+    var bundleID: String? = nil
     let gem: [Color]
     let items: [CleanItem]
     let selection: CleanGroup.Selection
@@ -468,9 +506,8 @@ struct PartCard: View {
                                center: UnitPoint(x: 0.92, y: 0.0),
                                startRadius: 0, endRadius: 420)
 
-                Image(systemName: icon)
-                    .font(.system(size: 64, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.16))
+                GroupGlyph(bundleID: bundleID, fallback: icon,
+                           size: bundleID == nil ? 64 : 70, opacity: 0.16)
                     .padding(.trailing, 16)
                     .padding(.top, 8)
 
