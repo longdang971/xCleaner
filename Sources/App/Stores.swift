@@ -1,0 +1,586 @@
+import SwiftUI
+import Combine
+import AppKit
+
+// MARK: - Tuỳ chọn
+
+final class AppSettings: ObservableObject {
+    @AppStorage("moveToTrash")      var moveToTrash: Bool = false
+    @AppStorage("oldDownloadDays")  var oldDownloadDays: Int = 60
+    @AppStorage("largeMinMB")       var largeMinMB: Int = 50
+    @AppStorage("duplicateMinMB")   var duplicateMinMB: Int = 1
+    @AppStorage("confirmBeforeClean") var confirmBeforeClean: Bool = true
+    @AppStorage("hasSeenWelcome")   var hasSeenWelcome: Bool = false
+}
+
+// MARK: - Bộ tiết chế tiến trình
+
+/// Scanner gọi hàm tiến trình hàng nghìn lần mỗi giây. Nếu để mỗi lần đều chạm `@Published`
+/// thì SwiftUI dựng lại cây view liên tục và cửa sổ khựng. Bộ này chỉ cho qua tối đa ~20 lần/giây.
+final class ProgressThrottle {
+    private var lastEmit: CFAbsoluteTime = 0
+    private let interval: CFAbsoluteTime
+
+    init(fps: Double = 20) { interval = 1.0 / fps }
+
+    func emit(force: Bool = false, _ block: @escaping () -> Void) {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard force || now - lastEmit >= interval else { return }
+        lastEmit = now
+        DispatchQueue.main.async(execute: block)
+    }
+}
+
+// MARK: - Kho kết quả dạng nhóm
+
+@MainActor
+final class ScanStore: ObservableObject {
+    enum Phase: Equatable { case idle, scanning, results, cleaning, done }
+
+    let module: CleanModule
+    private let settings: AppSettings
+
+    @Published var phase: Phase = .idle
+    @Published var groups: [CleanGroup] = []
+    @Published var progress: Double = 0
+    @Published var statusText: String = ""
+    @Published var liveBytes: Int64 = 0
+    @Published var outcome: CleanOutcome?
+    @Published var lastError: String?
+
+    private let cancelToken = CancelToken()
+    private let throttle = ProgressThrottle()
+
+    init(module: CleanModule, settings: AppSettings) {
+        self.module = module
+        self.settings = settings
+    }
+
+    // Tổng hợp
+    var totalFound: Int64 { groups.reduce(0) { $0 + $1.totalSize } }
+    var totalSelected: Int64 { groups.reduce(0) { $0 + $1.selectedSize } }
+    var selectedItems: [CleanItem] { groups.flatMap { $0.items.filter(\.isSelected) } }
+    var needsAdmin: Bool { selectedItems.contains(where: \.requiresAdmin) }
+
+    var ringMode: ScanRing.Mode {
+        switch phase {
+        case .idle:     return .idle
+        case .scanning: return .scanning(progress)
+        case .results:  return .results
+        case .cleaning: return .cleaning(progress)
+        case .done:     return .done
+        }
+    }
+
+    // MARK: Quét
+
+    func scan() {
+        guard phase != .scanning && phase != .cleaning else { return }
+        cancelToken.reset()
+        phase = .scanning
+        groups = []
+        progress = 0
+        liveBytes = 0
+        outcome = nil
+        lastError = nil
+        statusText = "Đang bắt đầu…"
+
+        let scanner = makeScanner()
+        let token = cancelToken
+        let throttle = self.throttle
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = scanner.scan(cancel: token) { p in
+                throttle.emit {
+                    guard let self else { return }
+                    self.progress = p.fraction
+                    self.statusText = p.message
+                    if p.bytesFound > 0 { self.liveBytes = p.bytesFound }
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let g = result
+                withAnimation(Motion.standard) {
+                    self.groups = g
+                    self.liveBytes = g.reduce(0) { $0 + $1.totalSize }
+                    self.phase = token.isCancelled && g.isEmpty ? .idle : .results
+                    self.progress = 1
+                    self.statusText = g.isEmpty ? "Không tìm thấy gì để dọn" : "Sẵn sàng dọn"
+                }
+            }
+        }
+    }
+
+    func cancelScan() {
+        cancelToken.cancel()
+        statusText = "Đang dừng…"
+    }
+
+    private func makeScanner() -> ModuleScanner {
+        switch module {
+        case .smartScan:      return SmartScanScanner()
+        case .systemJunk:     return SystemJunkScanner()
+        case .privacy:        return BrowserPrivacyScanner()
+        case .trashDownloads: return TrashDownloadsScanner(oldDownloadDays: settings.oldDownloadDays)
+        default:              return SystemJunkScanner()
+        }
+    }
+
+    // MARK: Chọn
+
+    func toggleItem(groupID: String, itemID: UUID) {
+        guard let gi = groups.firstIndex(where: { $0.id == groupID }),
+              let ii = groups[gi].items.firstIndex(where: { $0.id == itemID }) else { return }
+        groups[gi].items[ii].isSelected.toggle()
+    }
+
+    func toggleGroup(_ groupID: String) {
+        guard let gi = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        let turnOn = groups[gi].selection != .all
+        for i in groups[gi].items.indices { groups[gi].items[i].isSelected = turnOn }
+    }
+
+    func toggleExpanded(_ groupID: String) {
+        guard let gi = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        withAnimation(Motion.standard) { groups[gi].isExpanded.toggle() }
+    }
+
+    /// Thoát ứng dụng đang giữ dữ liệu (trình duyệt) để việc dọn không bị ghi đè ngay sau đó.
+    func quitApp(groupID: String) {
+        guard let gi = groups.firstIndex(where: { $0.id == groupID }),
+              let bid = groups[gi].runningBundleID else { return }
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: bid)
+        running.forEach { $0.terminate() }
+
+        // Cho app vài giây để đóng, rồi kiểm tra lại thay vì tin ngay vào terminate().
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self,
+                  let gi = self.groups.firstIndex(where: { $0.id == groupID }) else { return }
+            if !FileUtils.isRunning(bundleID: bid) {
+                withAnimation(Motion.gentle) {
+                    self.groups[gi].runningBundleID = nil
+                    self.groups[gi].subtitle = "\(self.groups[gi].items.count) mục"
+                }
+            }
+        }
+    }
+
+    func selectAll(_ on: Bool) {
+        for gi in groups.indices {
+            for ii in groups[gi].items.indices { groups[gi].items[ii].isSelected = on }
+        }
+    }
+
+    // MARK: Dọn
+
+    func clean() {
+        let items = selectedItems
+        guard !items.isEmpty else { return }
+
+        phase = .cleaning
+        progress = 0
+        statusText = "Đang dọn…"
+
+        let request = Remover.Request(
+            items: items,
+            moveToTrash: settings.moveToTrash,
+            adminPrompt: "xCleaner cần quyền quản trị để xoá \(items.filter(\.requiresAdmin).count) mục trong thư mục hệ thống.")
+        let throttle = ProgressThrottle(fps: 15)
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Remover.perform(request) { fraction, message in
+                throttle.emit {
+                    guard let self else { return }
+                    self.progress = fraction
+                    self.statusText = message
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                withAnimation(Motion.standard) {
+                    self.outcome = result
+                    self.phase = .done
+                    self.progress = 1
+                    self.statusText = result.wasCancelled && result.removedCount == 0
+                        ? "Đã huỷ" : "Đã dọn xong"
+                    // Bỏ các mục đã xử lý khỏi danh sách.
+                    let removed = Set(items.map(\.url.path))
+                    for gi in self.groups.indices {
+                        self.groups[gi].items.removeAll {
+                            removed.contains($0.url.path) && !FileUtils.exists($0.url)
+                        }
+                    }
+                    self.groups.removeAll { $0.items.isEmpty }
+                    self.liveBytes = result.freedBytes
+                }
+            }
+        }
+    }
+
+    func reset() {
+        phase = groups.isEmpty ? .idle : .results
+        outcome = nil
+        progress = groups.isEmpty ? 0 : 1
+        liveBytes = groups.reduce(0) { $0 + $1.totalSize }
+        statusText = groups.isEmpty ? "" : "Sẵn sàng dọn"
+    }
+}
+
+// MARK: - Gỡ ứng dụng
+
+@MainActor
+final class UninstallStore: ObservableObject {
+    @Published var apps: [UninstallScanner.InstalledApp] = []
+    @Published var isLoading = false
+    @Published var progress: Double = 0
+    @Published var statusText = ""
+    @Published var search = ""
+    @Published var showSystemApps = false
+    @Published var sort: Sort = .size
+
+    @Published var selectedApp: UninstallScanner.InstalledApp?
+    @Published var leftovers: [CleanItem] = []
+    @Published var isLoadingLeftovers = false
+    @Published var outcome: CleanOutcome?
+    @Published var isRemoving = false
+
+    enum Sort: String, CaseIterable, Identifiable {
+        case size = "Dung lượng", name = "Tên", lastUsed = "Lần dùng cuối"
+        var id: String { rawValue }
+    }
+
+    private let settings: AppSettings
+    private let scanner = UninstallScanner()
+    private let cancelToken = CancelToken()
+    private let throttle = ProgressThrottle()
+
+    init(settings: AppSettings) { self.settings = settings }
+
+    var filteredApps: [UninstallScanner.InstalledApp] {
+        var list = apps
+        if !showSystemApps { list = list.filter { !$0.isSystemApp } }
+        if !search.isEmpty {
+            list = list.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        }
+        switch sort {
+        case .size:     list.sort { $0.totalSize > $1.totalSize }
+        case .name:     list.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        case .lastUsed: list.sort { ($0.lastUsed ?? .distantPast) < ($1.lastUsed ?? .distantPast) }
+        }
+        return list
+    }
+
+    var selectedLeftoverSize: Int64 { leftovers.filter(\.isSelected).reduce(0) { $0 + $1.size } }
+
+    func load() {
+        guard !isLoading else { return }
+        isLoading = true
+        cancelToken.reset()
+        statusText = "Đang đọc danh sách ứng dụng…"
+        let token = cancelToken
+        let throttle = self.throttle
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = UninstallScanner().listApps(cancel: token) { p in
+                throttle.emit {
+                    self?.progress = p.fraction
+                    self?.statusText = p.message
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                withAnimation(Motion.standard) {
+                    self.apps = result
+                    self.isLoading = false
+                    self.statusText = "\(result.count) ứng dụng"
+                }
+            }
+        }
+    }
+
+    func select(_ app: UninstallScanner.InstalledApp) {
+        selectedApp = app
+        leftovers = []
+        outcome = nil
+        isLoadingLeftovers = true
+        let token = cancelToken
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let items = UninstallScanner().leftovers(for: app, cancel: token)
+            DispatchQueue.main.async {
+                guard let self, self.selectedApp?.url == app.url else { return }
+                withAnimation(Motion.gentle) {
+                    self.leftovers = items
+                    self.isLoadingLeftovers = false
+                }
+            }
+        }
+    }
+
+    func toggle(_ id: UUID) {
+        guard let i = leftovers.firstIndex(where: { $0.id == id }) else { return }
+        leftovers[i].isSelected.toggle()
+    }
+
+    func uninstall() {
+        let items = leftovers.filter(\.isSelected)
+        guard !items.isEmpty, let app = selectedApp else { return }
+        isRemoving = true
+
+        let request = Remover.Request(
+            items: items,
+            moveToTrash: settings.moveToTrash,
+            adminPrompt: "xCleaner cần quyền quản trị để gỡ \(app.name) khỏi thư mục hệ thống.")
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Remover.perform(request) { _, _ in }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                withAnimation(Motion.standard) {
+                    self.outcome = result
+                    self.isRemoving = false
+                    self.leftovers.removeAll { !FileUtils.exists($0.url) }
+                    if !FileUtils.exists(app.url) {
+                        self.apps.removeAll { $0.url == app.url }
+                        self.selectedApp = nil
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Tệp lớn & cũ
+
+@MainActor
+final class LargeOldStore: ObservableObject {
+    @Published var files: [LargeOldScanner.Found] = []
+    @Published var selected: Set<URL> = []
+    @Published var isScanning = false
+    @Published var progress: Double = 0
+    @Published var statusText = ""
+    @Published var filter: Filter = .all
+    @Published var search = ""
+    @Published var outcome: CleanOutcome?
+    @Published var roots: [URL] = [FileUtils.home]
+
+    enum Filter: String, CaseIterable, Identifiable {
+        case all = "Tất cả", old = "Lâu không dùng", video = "Video", archive = "Nén / bộ cài"
+        var id: String { rawValue }
+    }
+
+    private let settings: AppSettings
+    private let cancelToken = CancelToken()
+    private let throttle = ProgressThrottle()
+
+    init(settings: AppSettings) { self.settings = settings }
+
+    var visibleFiles: [LargeOldScanner.Found] {
+        var list = files
+        switch filter {
+        case .all:     break
+        case .old:     list = list.filter(\.isOld)
+        case .video:   list = list.filter { $0.kind == "Video" }
+        case .archive: list = list.filter { $0.kind == "Nén / bộ cài" }
+        }
+        if !search.isEmpty {
+            list = list.filter { $0.url.lastPathComponent.localizedCaseInsensitiveContains(search) }
+        }
+        return list
+    }
+
+    var selectedSize: Int64 {
+        files.filter { selected.contains($0.url) }.reduce(0) { $0 + $1.size }
+    }
+
+    func scan() {
+        guard !isScanning else { return }
+        cancelToken.reset()
+        isScanning = true
+        files = []
+        selected = []
+        outcome = nil
+        progress = 0
+
+        var opts = LargeOldScanner.Options()
+        opts.roots = roots
+        opts.minimumSize = Int64(settings.largeMinMB) * 1024 * 1024
+        let token = cancelToken
+        let throttle = self.throttle
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = LargeOldScanner().scan(options: opts, cancel: token) { p in
+                throttle.emit {
+                    self?.progress = p.fraction
+                    self?.statusText = p.message
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                withAnimation(Motion.standard) {
+                    self.files = result
+                    self.isScanning = false
+                    self.progress = 1
+                    self.statusText = "\(result.count) tệp lớn hơn \(self.settings.largeMinMB) MB"
+                }
+            }
+        }
+    }
+
+    func cancel() { cancelToken.cancel() }
+
+    func toggle(_ url: URL) {
+        if selected.contains(url) { selected.remove(url) } else { selected.insert(url) }
+    }
+
+    func remove() {
+        let items = files.filter { selected.contains($0.url) }
+            .map { CleanItem(url: $0.url, detail: "", size: $0.size,
+                             requiresAdmin: PrivilegedRunner.needsAdmin(for: $0.url),
+                             isDirectory: FileUtils.isDirectory($0.url)) }
+        guard !items.isEmpty else { return }
+
+        // Tệp cá nhân luôn vào Thùng rác để còn lấy lại được.
+        let request = Remover.Request(items: items, moveToTrash: true,
+                                      adminPrompt: "xCleaner cần quyền quản trị để xoá các tệp đã chọn.")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Remover.perform(request) { _, _ in }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                withAnimation(Motion.standard) {
+                    self.outcome = result
+                    self.files.removeAll { !FileUtils.exists($0.url) }
+                    self.selected = []
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Tệp trùng lặp
+
+@MainActor
+final class DuplicateStore: ObservableObject {
+    @Published var sets: [DuplicateScanner.DuplicateSet] = []
+    @Published var selected: Set<URL> = []
+    @Published var isScanning = false
+    @Published var progress: Double = 0
+    @Published var statusText = ""
+    @Published var outcome: CleanOutcome?
+    @Published var roots: [URL] = DuplicateScanner.Options().roots.filter { FileUtils.exists($0) }
+
+    private let settings: AppSettings
+    private let cancelToken = CancelToken()
+    private let throttle = ProgressThrottle()
+
+    init(settings: AppSettings) { self.settings = settings }
+
+    var reclaimable: Int64 { sets.reduce(0) { $0 + $1.reclaimable } }
+    var selectedSize: Int64 {
+        sets.reduce(0) { acc, s in acc + s.size * Int64(s.files.filter { selected.contains($0) }.count) }
+    }
+
+    func scan() {
+        guard !isScanning else { return }
+        cancelToken.reset()
+        isScanning = true
+        sets = []
+        selected = []
+        outcome = nil
+        progress = 0
+
+        var opts = DuplicateScanner.Options()
+        opts.roots = roots
+        opts.minimumSize = Int64(settings.duplicateMinMB) * 1024 * 1024
+        let token = cancelToken
+        let throttle = self.throttle
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = DuplicateScanner().scan(options: opts, cancel: token) { p in
+                throttle.emit {
+                    self?.progress = p.fraction
+                    self?.statusText = p.message
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                withAnimation(Motion.standard) {
+                    self.sets = result
+                    self.isScanning = false
+                    self.progress = 1
+                    self.statusText = result.isEmpty
+                        ? "Không tìm thấy tệp trùng"
+                        : "\(result.count) nhóm trùng lặp"
+                    self.autoSelect()
+                }
+            }
+        }
+    }
+
+    func cancel() { cancelToken.cancel() }
+
+    /// Giữ lại bản nằm ở đường dẫn ngắn nhất, chọn các bản còn lại.
+    func autoSelect() {
+        var s = Set<URL>()
+        for set in sets {
+            let sorted = set.files.sorted { $0.path.count < $1.path.count }
+            for f in sorted.dropFirst() { s.insert(f) }
+        }
+        selected = s
+    }
+
+    func toggle(_ url: URL, in set: DuplicateScanner.DuplicateSet) {
+        if selected.contains(url) {
+            selected.remove(url)
+        } else {
+            // Không cho phép chọn hết cả nhóm — phải còn lại ít nhất một bản.
+            let chosen = set.files.filter { selected.contains($0) }.count
+            guard chosen < set.files.count - 1 else { return }
+            selected.insert(url)
+        }
+    }
+
+    func remove() {
+        let items = sets.flatMap { set in
+            set.files.filter { selected.contains($0) }
+                .map { CleanItem(url: $0, detail: "", size: set.size, isDirectory: false) }
+        }
+        guard !items.isEmpty else { return }
+        let request = Remover.Request(items: items, moveToTrash: true,
+                                      adminPrompt: "xCleaner cần quyền quản trị để xoá các tệp đã chọn.")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Remover.perform(request) { _, _ in }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                withAnimation(Motion.standard) {
+                    self.outcome = result
+                    self.selected = []
+                    for i in self.sets.indices {
+                        self.sets[i].files.removeAll { !FileUtils.exists($0) }
+                    }
+                    self.sets.removeAll { $0.files.count < 2 }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Trạng thái chung
+
+@MainActor
+final class AppState: ObservableObject {
+    @Published var module: CleanModule = .smartScan
+    let settings = AppSettings()
+
+    private var scanStores: [CleanModule: ScanStore] = [:]
+    lazy var uninstall = UninstallStore(settings: settings)
+    lazy var largeOld = LargeOldStore(settings: settings)
+    lazy var duplicates = DuplicateStore(settings: settings)
+
+    func scanStore(for module: CleanModule) -> ScanStore {
+        if let s = scanStores[module] { return s }
+        let s = ScanStore(module: module, settings: settings)
+        scanStores[module] = s
+        return s
+    }
+}
