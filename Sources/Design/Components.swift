@@ -593,8 +593,8 @@ struct BottomFade: View {
     var height: CGFloat = 96
     var body: some View {
         LinearGradient(stops: [.init(color: .clear, location: 0),
-                               .init(color: .black.opacity(0.30), location: 0.45),
-                               .init(color: .black.opacity(0.62), location: 1)],
+                               .init(color: .black.opacity(0.38), location: 0.42),
+                               .init(color: .black.opacity(0.78), location: 1)],
                        startPoint: .top, endPoint: .bottom)
             .frame(height: height)
             .allowsHitTesting(false)

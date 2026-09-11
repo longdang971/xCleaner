@@ -226,6 +226,7 @@ private extension CleanItem {
     /// vẫn so đúng với đề xuất ban đầu.
     func inCategory(_ newCategory: String) -> CleanItem {
         var copy = self
+        copy.subcategory = category.isEmpty ? subcategory : category
         copy.category = newCategory
         return copy
     }

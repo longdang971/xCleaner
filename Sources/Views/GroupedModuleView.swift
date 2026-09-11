@@ -359,12 +359,11 @@ struct GroupTile: View {
 
 // MARK: - Danh sách chi tiết của một nhóm
 
-/// Cùng ngôn ngữ với lưới ngoài: mỗi phần là một thẻ kính mang màu riêng, biểu tượng in chìm
-/// ở góc phải, và hành động chính nằm ở nút tròn dưới đáy.
+/// Cùng ngôn ngữ với lưới ngoài: mỗi phần là một thẻ mang màu riêng. Bên trong thẻ, các mục
+/// lại chia thành cụm nhỏ theo loại dữ liệu — mười bảy dòng phẳng lì thì không ai đọc nổi.
 struct GroupDetailView: View {
     let group: CleanGroup
     let skin: ModuleSkin
-    /// Vị trí của nhóm trong lưới, để phần đầu tiên lấy đúng màu của thẻ vừa bấm vào.
     let gemBase: Int
     let groupSelectedSize: Int64
     var onBack: () -> Void
@@ -383,12 +382,11 @@ struct GroupDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-                .padding(.bottom, 18)
+            header.padding(.bottom, 16)
 
             ZStack(alignment: .bottom) {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(spacing: 14) {
                         ForEach(Array(sections.enumerated()), id: \.offset) { idx, section in
                             PartCard(title: section.title,
                                      icon: section.hasCategory
@@ -397,6 +395,8 @@ struct GroupDetailView: View {
                                         ?? (section.hasCategory ? nil : group.appBundleID),
                                      gem: TileGems.gem(for: gemBase + idx),
                                      items: section.items,
+                                     subcategories: section.hasCategory
+                                        ? group.subcategories(in: section.title) : [],
                                      selection: section.hasCategory
                                         ? group.selection(in: section.title) : group.selection,
                                      onToggleAll: {
@@ -407,57 +407,81 @@ struct GroupDetailView: View {
                         }
                     }
                     .padding(.horizontal, Metrics.contentPadding)
-                    .padding(.bottom, 150)
+                    .padding(.bottom, 140)
                 }
-                .scrollIndicators(.never)
 
-                BottomFade(height: 140)
+                BottomFade(height: 190)
             }
         }
         .overlay(alignment: .bottom) { cleanButton }
-        .overlay(alignment: .topTrailing) {
-            IconToolbar(actions: [
-                .init(icon: group.selection == .all ? "circle.slash" : "checkmark.circle",
-                      help: group.selection == .all ? "Bỏ chọn tất cả" : "Chọn tất cả",
-                      run: onToggleGroup)
-            ])
-            .padding(.trailing, Metrics.contentPadding)
-            .padding(.top, 6)
-        }
     }
+
+    // MARK: Đầu trang
 
     private var header: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 10) {
-                if let bid = group.appBundleID, let icon = AppIconProvider.icon(forBundleID: bid) {
-                    Image(nsImage: icon)
-                        .resizable().interpolation(.high)
-                        .frame(width: 54, height: 54)
-                        .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
-                        .padding(.top, 8)
-                }
-                HeroHeadline(title: group.title,
-                         subtitle: group.needsFullDiskAccess
-                            ? "Một phần danh sách bị macOS chặn — cấp Toàn quyền truy cập đĩa để thấy đủ"
-                            : "\(group.selectedCount)/\(group.items.count) mục · \(Fmt.size(groupSelectedSize)) trong \(Fmt.size(group.totalSize))") {
-                HStack(spacing: 8) {
-                    if group.needsFullDiskAccess {
-                        PillButton(title: "Cấp quyền truy cập đĩa", kind: .warning,
-                                   action: openFullDiskAccess)
+                HStack(spacing: 12) {
+                    if let bid = group.appBundleID,
+                       let icon = AppIconProvider.icon(forBundleID: bid) {
+                        Image(nsImage: icon)
+                            .resizable().interpolation(.high)
+                            .frame(width: 34, height: 34)
+                            .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
                     }
-                    if group.runningBundleID != nil {
-                        PillButton(title: "Thoát app", kind: .warning, action: onQuitApp)
-                    }
+                    Text(group.title)
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(.white)
                 }
+
+                Text("\(group.selectedCount)/\(group.items.count) mục · \(Fmt.size(groupSelectedSize)) trong \(Fmt.size(group.totalSize))")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Palette.textSecond)
+                    .contentTransition(.numericText())
+
+                if group.needsFullDiskAccess || group.runningBundleID != nil {
+                    noticeBar
                 }
             }
+            .frame(maxWidth: 640)
 
             HStack {
                 PillButton(title: "Quay lại", systemImage: "chevron.left", action: onBack)
                 Spacer()
+                IconToolbar(actions: [
+                    .init(icon: group.selection == .all ? "circle.slash" : "checkmark.circle",
+                          help: group.selection == .all ? "Bỏ chọn tất cả" : "Chọn tất cả",
+                          run: onToggleGroup)
+                ])
             }
             .padding(.horizontal, Metrics.contentPadding)
         }
+    }
+
+    /// Một dải nhỏ cho lời nhắc, thay vì một nút to chiếm giữa trang.
+    private var noticeBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: group.needsFullDiskAccess ? "lock.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 10, weight: .bold))
+            Text(group.needsFullDiskAccess
+                 ? "Một phần danh sách bị macOS chặn"
+                 : "Trình duyệt đang mở — nên thoát trước khi dọn")
+                .font(.system(size: 11.5, weight: .medium))
+
+            Button(group.needsFullDiskAccess ? "Cấp quyền" : "Thoát app") {
+                if group.needsFullDiskAccess { openFullDiskAccess() } else { onQuitApp() }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11.5, weight: .bold))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.black.opacity(0.22)))
+        }
+        .foregroundStyle(.black.opacity(0.82))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Palette.warning))
+        .clipShape(Capsule())
     }
 
     private var cleanButton: some View {
@@ -466,7 +490,6 @@ struct GroupDetailView: View {
             .padding(.bottom, 22)
     }
 
-    /// Biểu tượng cho từng phần dữ liệu trình duyệt.
     static func icon(forPart part: String) -> String {
         switch part {
         case BrowserPrivacyScanner.Part.history:   return "clock.arrow.circlepath"
@@ -489,12 +512,12 @@ struct PartCard: View {
     var bundleID: String? = nil
     let gem: [Color]
     let items: [CleanItem]
+    var subcategories: [String] = []
     let selection: CleanGroup.Selection
     var onToggleAll: () -> Void
     var onToggleItem: (UUID) -> Void
 
-    @State private var hovering = false
-    private let visibleLimit = 80
+    private let visibleLimit = 120
 
     private var selectedSize: Int64 { items.filter(\.isSelected).reduce(0) { $0 + $1.size } }
     private var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
@@ -503,82 +526,116 @@ struct PartCard: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().overlay(Color.white.opacity(0.14))
-            VStack(spacing: 0) {
-                ForEach(items.prefix(visibleLimit)) { item in
-                    ItemRow(item: item) { onToggleItem(item.id) }
-                }
-                if items.count > visibleLimit {
-                    Text("… và \(items.count - visibleLimit) mục nữa (đã tính vào tổng)")
-                        .font(.system(size: 11)).foregroundStyle(Color.white.opacity(0.72))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16).padding(.vertical, 10)
-                }
-            }
-            .padding(.vertical, 4)
+            Divider().overlay(Color.white.opacity(0.16))
+            body_
         }
         .background {
             ZStack(alignment: .topTrailing) {
-                // Nền màu đều, rồi mới thêm điểm sáng ở góc phải trên. Nếu dùng gradient chéo
-                // như thẻ lưới, thẻ cao mấy trăm điểm sẽ chìm hẳn thành xám ở nửa dưới.
-                gem[1].opacity(hovering ? 0.92 : 0.82)
-
-                RadialGradient(colors: [gem[0].opacity(0.40), .clear],
-                               center: UnitPoint(x: 0.92, y: 0.0),
-                               startRadius: 0, endRadius: 420)
-
-                LinearGradient(colors: [.clear, .black.opacity(0.16)],
+                gem[1].opacity(0.5)
+                RadialGradient(colors: [gem[0].opacity(0.34), .clear],
+                               center: UnitPoint(x: 0.95, y: 0),
+                               startRadius: 0, endRadius: 460)
+                LinearGradient(colors: [.clear, .black.opacity(0.22)],
                                startPoint: .top, endPoint: .bottom)
             }
-            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
         }
+        .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
         .shadow(color: .black.opacity(0.24), radius: 16, y: 7)
-        .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 11) {
             TriStateBox(state: selection, action: onToggleAll)
 
             if let bundleID, let appIcon = AppIconProvider.icon(forBundleID: bundleID) {
                 Image(nsImage: appIcon)
                     .resizable().interpolation(.high)
-                    .frame(width: 19, height: 19)
+                    .frame(width: 22, height: 22)
             } else {
                 Image(systemName: icon)
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.85))
-                    .frame(width: 19)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.9))
+                    .frame(width: 22)
             }
 
             Text(title)
-                .font(.system(size: 13.5, weight: .semibold))
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
+                .lineLimit(1)
 
             if worstSafety != .safe { SafetyBadge(level: worstSafety) }
             if items.contains(where: \.requiresAdmin) { AdminBadge() }
 
             Spacer(minLength: 6)
 
-            Text("\(items.filter(\.isSelected).count)/\(items.count) mục")
-                .font(.system(size: 10.5))
+            Text("\(items.filter(\.isSelected).count)/\(items.count)")
+                .font(.system(size: 11.5))
                 .foregroundStyle(Color.white.opacity(0.7))
 
             Text(selectedSize == totalSize ? Fmt.size(totalSize)
                                            : "\(Fmt.size(selectedSize)) / \(Fmt.size(totalSize))")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .contentTransition(.numericText())
         }
         .padding(.horizontal, 16)
-        .frame(height: 46)
+        .frame(height: 52)
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggleAll)
+    }
+
+    @ViewBuilder
+    private var body_: some View {
+        VStack(spacing: 0) {
+            if subcategories.isEmpty {
+                rows(items.prefix(visibleLimit).map { $0 })
+            } else {
+                ForEach(subcategories, id: \.self) { sub in
+                    let list = items.filter { $0.subcategory == sub }
+                    if !list.isEmpty {
+                        subheader(sub, list)
+                        rows(list)
+                    }
+                }
+            }
+
+            if items.count > visibleLimit && subcategories.isEmpty {
+                Text("… và \(items.count - visibleLimit) mục nữa (đã tính vào tổng)")
+                    .font(.system(size: 11)).foregroundStyle(Color.white.opacity(0.72))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func subheader(_ sub: String, _ list: [CleanItem]) -> some View {
+        HStack(spacing: 8) {
+            Text(sub.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.7)
+                .foregroundStyle(Color.white.opacity(0.62))
+            Rectangle()
+                .fill(Color.white.opacity(0.14))
+                .frame(height: 1)
+            Text(Fmt.size(list.reduce(0) { $0 + $1.size }))
+                .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.white.opacity(0.62))
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+    }
+
+    private func rows(_ list: [CleanItem]) -> some View {
+        ForEach(list) { item in
+            ItemRow(item: item) { onToggleItem(item.id) }
+        }
     }
 }
 

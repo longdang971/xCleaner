@@ -128,6 +128,9 @@ struct CleanItem: Identifiable, Hashable {
     /// Tên phần mà mục này thuộc về, ví dụ "Lịch sử" hay "Tự động điền".
     /// Rỗng nghĩa là nhóm không chia phần.
     var category: String
+    /// Cụm nhỏ bên trong phần. Khi gộp nhiều trình duyệt vào một thẻ, `category` thành tên
+    /// trình duyệt còn loại dữ liệu lui về đây, nếu không danh sách sẽ phẳng lì mười mấy dòng.
+    var subcategory: String = ""
     /// Mức rủi ro của riêng mục này (nhóm có mức riêng, nhưng trong một nhóm vẫn có mục nặng nhẹ khác nhau).
     var safety: SafetyLevel
 
@@ -140,6 +143,7 @@ struct CleanItem: Identifiable, Hashable {
          isDirectory: Bool = true,
          emptyContentsOnly: Bool = false,
          category: String = "",
+         subcategory: String = "",
          safety: SafetyLevel = .safe) {
         self.id = UUID()
         self.url = url
@@ -152,6 +156,7 @@ struct CleanItem: Identifiable, Hashable {
         self.isDirectory = isDirectory
         self.emptyContentsOnly = emptyContentsOnly
         self.category = category
+        self.subcategory = subcategory
         self.safety = safety
     }
 
@@ -160,7 +165,8 @@ struct CleanItem: Identifiable, Hashable {
     func reselected(_ value: Bool, name newName: String? = nil) -> CleanItem {
         CleanItem(url: url, name: newName ?? name, detail: detail, size: size,
                   isSelected: value, requiresAdmin: requiresAdmin, isDirectory: isDirectory,
-                  emptyContentsOnly: emptyContentsOnly, category: category, safety: safety)
+                  emptyContentsOnly: emptyContentsOnly, category: category,
+                  subcategory: subcategory, safety: safety)
     }
 
     static func == (lhs: CleanItem, rhs: CleanItem) -> Bool { lhs.id == rhs.id }
@@ -203,6 +209,16 @@ struct CleanGroup: Identifiable {
 
     func items(in category: String) -> [CleanItem] {
         items.filter { $0.category == category }
+    }
+
+    /// Các cụm nhỏ bên trong một phần, theo đúng thứ tự xuất hiện.
+    func subcategories(in category: String) -> [String] {
+        var seen = Set<String>()
+        var order: [String] = []
+        for i in items(in: category) where !i.subcategory.isEmpty {
+            if seen.insert(i.subcategory).inserted { order.append(i.subcategory) }
+        }
+        return order
     }
 
     func selection(in category: String) -> Selection {
