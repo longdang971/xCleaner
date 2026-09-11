@@ -75,7 +75,6 @@ struct UninstallerView: View {
                 ])
             }
         }
-        .frame(height: 30)
     }
 
     /// Nút sắp xếp xoay vòng qua ba tiêu chí. `Menu` của SwiftUI không nhận chiều cao mình
@@ -98,6 +97,7 @@ struct UninstallerView: View {
             .frame(height: 30)
             .background(Capsule().fill(Color.white.opacity(0.13)))
             .overlay(Capsule().strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
+            .clipShape(Capsule())
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)

@@ -174,6 +174,8 @@ struct GlassBackground: ViewModifier {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(Palette.glassLine, lineWidth: 1)
             )
+            // Cắt theo đúng hình, nếu không strokeBorder để lại hai vạch dọc mảnh ở hai bên.
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
             .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 8)
     }
 }

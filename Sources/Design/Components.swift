@@ -470,8 +470,9 @@ struct FilterChip: View {
                 .padding(.horizontal, 14)
                 .frame(height: 30)
                 .background(Capsule().fill(isOn ? Color.white.opacity(0.92)
-                                                : Color.white.opacity(hovering ? 0.2 : 0.13)))
+                                                 : Color.white.opacity(hovering ? 0.2 : 0.13)))
                 .overlay(Capsule().strokeBorder(Color.white.opacity(isOn ? 0 : 0.16), lineWidth: 1))
+                .clipShape(Capsule())
         }
         .buttonStyle(.plain)
         .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
@@ -771,6 +772,7 @@ struct TileSurface: ViewModifier {
                     .strokeBorder(Color.white.opacity(highlighted ? 0.42 : 0.18),
                                   lineWidth: highlighted ? 1.5 : 1)
             )
+            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
             .shadow(color: highlighted ? gem[1].opacity(0.55) : .black.opacity(0.24),
                     radius: highlighted ? 22 : 16, y: 7)
             .opacity(dimmed ? 0.55 : 1)
