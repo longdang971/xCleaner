@@ -58,7 +58,12 @@ struct SmartScanScanner: ModuleScanner {
         if trashHasContent() || hasContent(FileUtils.homePath("Downloads")) {
             kinds.append(.trash)
         }
-        if hasContent(FileUtils.homePath("Library/Saved Application State")) {
+        // Thư mục danh sách gần đây bị macOS chặn cũng tính là có việc phải làm:
+        // người dùng cần thấy ô đó để biết mà cấp quyền.
+        let recents = FileUtils.homePath("Library/Application Support/com.apple.sharedfilelist")
+        if hasContent(FileUtils.homePath("Library/Saved Application State"))
+            || hasContent(recents)
+            || FileUtils.directoryState(recents) == .blocked {
             kinds.append(.misc)
         }
         return kinds

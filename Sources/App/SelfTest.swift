@@ -22,6 +22,7 @@ enum SelfTest {
         testSelectionMemory()
         testUninstaller()
         testScatteredCaches()
+        testRecentLists()
         testDuplicates()
         testLargeOld()
         print("=== \(passed) đạt, \(failed) hỏng ===")
@@ -339,6 +340,44 @@ enum SelfTest {
         check("chỉ dọn ruột, giữ lại thư mục",
               items.filter { cacheDirs.map(\.path).contains($0.url.path) }
                    .allSatisfy(\.emptyContentsOnly))
+    }
+
+    // MARK: Danh sách mở gần đây
+
+    private static func testRecentLists() {
+        print("[RecentLists] danh sách mở gần đây")
+        let fm = FileManager.default
+        let base = makeSandbox()
+        defer { try? fm.removeItem(at: base) }
+
+        let perApp = base.appendingPathComponent("com.apple.LSSharedFileList.ApplicationRecentDocuments")
+        try? fm.createDirectory(at: perApp, withIntermediateDirectories: true)
+
+        let blob = Data(repeating: 3, count: 4096)
+        for f in ["com.apple.LSSharedFileList.RecentDocuments.sfl3",
+                  "com.apple.LSSharedFileList.RecentApplications.sfl3",
+                  "com.apple.LSSharedFileList.FavoriteItems.sfl3",
+                  "com.apple.LSSharedFileList.FavoriteVolumes.sfl3"] {
+            fm.createFile(atPath: base.appendingPathComponent(f).path, contents: blob)
+        }
+        fm.createFile(atPath: perApp.appendingPathComponent("com.apple.TextEdit.sfl3").path,
+                      contents: blob)
+
+        let items = SystemJunkScanner().recentLists(root: base, cancel: CancelToken())
+        let names = Set(items.map(\.url.lastPathComponent))
+
+        check("tìm ra tài liệu mở gần đây",
+              names.contains("com.apple.LSSharedFileList.RecentDocuments.sfl3"))
+        check("tìm ra ứng dụng mở gần đây",
+              names.contains("com.apple.LSSharedFileList.RecentApplications.sfl3"))
+        check("tìm ra danh sách riêng của từng app",
+              names.contains("com.apple.TextEdit.sfl3"))
+        check("KHÔNG đụng mục yêu thích Finder",
+              !names.contains("com.apple.LSSharedFileList.FavoriteItems.sfl3"))
+        check("KHÔNG đụng ổ đĩa yêu thích",
+              !names.contains("com.apple.LSSharedFileList.FavoriteVolumes.sfl3"))
+        check("mặc định không chọn sẵn", items.allSatisfy { !$0.defaultSelected })
+        check("xoá cả tệp chứ không chỉ dọn ruột", items.allSatisfy { !$0.emptyContentsOnly })
     }
 
     // MARK: Tệp trùng lặp

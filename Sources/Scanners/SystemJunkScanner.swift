@@ -65,6 +65,61 @@ struct SystemJunkScanner: ModuleScanner {
         return result
     }
 
+    /// Danh sách "Mở gần đây" của từng ứng dụng và của hệ thống.
+    ///
+    /// macOS giữ chúng ở `~/Library/Application Support/com.apple.sharedfilelist`: mỗi app một
+    /// tệp `.sfl3` đặt theo bundle id trong `ApplicationRecentDocuments`, cộng vài danh sách
+    /// dùng chung. Thư mục này nằm sau hàng rào TCC nên chưa cấp Toàn quyền truy cập đĩa thì
+    /// đọc ra rỗng.
+    ///
+    /// Tuyệt đối không đụng `FavoriteItems` và `FavoriteVolumes` — đó là mục yêu thích trong
+    /// thanh bên Finder, xoá là người dùng mất hết lối tắt của mình.
+    func recentLists(root: URL? = nil, cancel: CancelToken,
+                     found: ((String, Int64) -> Void)? = nil) -> [CleanItem] {
+        let base = root ?? FileUtils.homePath("Library/Application Support/com.apple.sharedfilelist")
+        guard FileUtils.isDirectory(base) else { return [] }
+
+        var result: [CleanItem] = []
+
+        func add(_ url: URL, name: String, detail: String) {
+            guard !url.lastPathComponent.contains("Favorite") else { return }
+            if let item = makeItem(url, name: name, detail: detail,
+                                   selected: false, cancel: cancel,
+                                   category: "Danh sách mở gần đây") {
+                found?(item.name, item.size)
+                result.append(item)
+            }
+        }
+
+        // Danh sách dùng chung của hệ thống
+        let shared: [(String, String)] = [
+            ("com.apple.LSSharedFileList.RecentDocuments.sfl3", "Tài liệu mở gần đây"),
+            ("com.apple.LSSharedFileList.RecentApplications.sfl3", "Ứng dụng mở gần đây"),
+            ("com.apple.LSSharedFileList.RecentServers.sfl3", "Máy chủ đã kết nối"),
+            ("com.apple.LSSharedFileList.RecentHosts.sfl3", "Máy đã kết nối")
+        ]
+        for (file, label) in shared {
+            add(base.appendingPathComponent(file), name: label, detail: "Danh sách của Finder")
+        }
+
+        // "Mở gần đây" của từng ứng dụng
+        let perApp = base.appendingPathComponent("com.apple.LSSharedFileList.ApplicationRecentDocuments")
+        for file in FileUtils.children(of: perApp) {
+            if cancel.isCancelled { break }
+            let id = file.deletingPathExtension().lastPathComponent
+            let app = AppCatalog.shared.name(forBundleID: id) ?? id
+            add(file, name: "Mở gần đây · \(app)", detail: "Menu Tệp ▸ Mở gần đây của \(app)")
+        }
+
+        return result.sorted { $0.size > $1.size }
+    }
+
+    /// Thư mục danh sách gần đây có bị macOS chặn đọc không.
+    func recentListsBlocked() -> Bool {
+        FileUtils.directoryState(
+            FileUtils.homePath("Library/Application Support/com.apple.sharedfilelist")) == .blocked
+    }
+
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var groups: [CleanGroup] = []
         var found: Int64 = 0
@@ -231,16 +286,26 @@ struct SystemJunkScanner: ModuleScanner {
         report(6, steps, "Mục khác…")
         var misc = itemsFromChildren(of: FileUtils.homePath("Library/Saved Application State"),
                                      selected: false, cancel: cancel)
+            .map { item -> CleanItem in
+                var copy = item
+                copy.category = "Trạng thái cửa sổ"
+                return copy
+            }
+        misc += recentLists(cancel: cancel, found: { stage.found($0, $1) })
+        let recentBlocked = recentListsBlocked()
         for f in FileUtils.children(of: URL(fileURLWithPath: "/Library/Updates")) {
             if let i = makeItem(f, detail: "Gói cập nhật đã tải", selected: false, cancel: cancel) {
                 misc.append(i)
             }
         }
         found += misc.reduce(0) { $0 + $1.size }
-        if !misc.isEmpty {
+        if !misc.isEmpty || recentBlocked {
             groups.append(CleanGroup(id: "misc", title: "Trạng thái cửa sổ đã lưu",
-                                     subtitle: "Xoá sẽ mất vị trí cửa sổ và tab đang mở của app",
-                                     icon: "macwindow", safety: .review, items: misc))
+                                     subtitle: recentBlocked
+                                        ? "Danh sách mở gần đây bị macOS chặn — cần Toàn quyền truy cập đĩa"
+                                        : "Vị trí cửa sổ đang mở và danh sách mở gần đây của các app",
+                                     icon: "macwindow", safety: .review, items: misc,
+                                     needsFullDiskAccess: recentBlocked))
         }
         stage.finish(6, bytes: misc.reduce(0) { $0 + $1.size })
 
