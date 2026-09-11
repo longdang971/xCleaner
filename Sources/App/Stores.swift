@@ -210,7 +210,11 @@ final class ScanStore: ObservableObject {
         for gi in groups.indices {
             for ii in groups[gi].items.indices { groups[gi].items[ii].isSelected = on }
         }
-        SelectionMemory.shared.record(groups.flatMap(\.items))
+        // Chọn/bỏ chọn tất cả là thao tác nhất thời, không phải ý định lâu dài về từng mục:
+        // ghi nhớ nó thì lần quét sau mọi thứ im lìm không chọn gì và người dùng chẳng hiểu vì sao.
+        // Nhân tiện xoá luôn ghi nhớ cũ để lần sau quay về đúng đề xuất mặc định.
+        SelectionMemory.shared.forget(groups.flatMap(\.items))
+        restoredCount = 0
     }
 
     // MARK: Dọn

@@ -89,6 +89,16 @@ final class SelectionMemory {
         return restored
     }
 
+    /// Quên ghi nhớ của các mục này, đưa chúng về đúng đề xuất mặc định.
+    func forget(_ items: [CleanItem]) {
+        guard isEnabled, !items.isEmpty else { return }
+        lock.lock()
+        for item in items { overrides.removeValue(forKey: key(for: item)) }
+        let snapshot = overrides
+        lock.unlock()
+        UserDefaults.standard.set(snapshot, forKey: defaultsKey)
+    }
+
     func forgetAll() {
         lock.lock(); overrides.removeAll(); lock.unlock()
         UserDefaults.standard.removeObject(forKey: defaultsKey)

@@ -21,6 +21,7 @@ struct TrashDownloadsScanner: ModuleScanner {
         // 1. Thùng rác — của người dùng và trên từng ổ đĩa gắn ngoài.
         stage.begin(0)
         var trash: [CleanItem] = []
+        var trashBlocked = false
         var trashDirs: [URL] = [FileUtils.homePath(".Trash")]
         let uid = getuid()
         for vol in FileUtils.mountedVolumes() {
@@ -28,6 +29,7 @@ struct TrashDownloadsScanner: ModuleScanner {
             trashDirs.append(vol.appendingPathComponent(".Trashes/\(uid)"))
         }
         for dir in trashDirs {
+            if FileUtils.directoryState(dir) == .blocked { trashBlocked = true }
             guard FileUtils.isDirectory(dir) else { continue }
             for f in FileUtils.children(of: dir) {
                 if cancel.isCancelled { break }
@@ -39,10 +41,14 @@ struct TrashDownloadsScanner: ModuleScanner {
         trash.sort { $0.size > $1.size }
         found += trash.reduce(0) { $0 + $1.size }
         stage.finish(0, bytes: trash.reduce(0) { $0 + $1.size })
-        if !trash.isEmpty {
+        if !trash.isEmpty || trashBlocked {
             groups.append(CleanGroup(id: "trash", title: "Thùng rác",
-                                     subtitle: "Bao gồm cả Thùng rác trên ổ đĩa gắn ngoài",
-                                     icon: "trash.fill", safety: .safe, items: trash, isExpanded: false))
+                                     subtitle: trashBlocked
+                                        ? "macOS đang chặn đọc Thùng rác — cần Toàn quyền truy cập đĩa"
+                                        : "Bao gồm cả Thùng rác trên ổ đĩa gắn ngoài",
+                                     icon: "trash.fill", safety: .safe, items: trash,
+                                     isExpanded: false,
+                                     needsFullDiskAccess: trashBlocked))
         }
         if cancel.isCancelled { return groups }
 

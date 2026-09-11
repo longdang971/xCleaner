@@ -59,6 +59,29 @@ enum FileUtils {
         return isDir.boolValue
     }
 
+    /// macOS chặn đọc một số thư mục (Thùng rác, dữ liệu Safari, Mail…) khi app chưa được cấp
+    /// Toàn quyền truy cập đĩa. Khi đó `contentsOfDirectory` ném lỗi chứ không trả mảng rỗng —
+    /// phân biệt được hai trường hợp này mới báo đúng cho người dùng.
+    enum DirectoryState { case missing, blocked, empty, hasItems }
+
+    static func directoryState(_ url: URL) -> DirectoryState {
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else {
+            return .missing
+        }
+        do {
+            let items = try fm.contentsOfDirectory(atPath: url.path)
+            return items.contains { !$0.hasPrefix(".") } ? .hasItems : .empty
+        } catch {
+            let ns = error as NSError
+            let underlying = ns.underlyingErrors.first as NSError?
+            let denied = ns.code == NSFileReadNoPermissionError
+                || underlying?.code == Int(EPERM)
+                || underlying?.code == Int(EACCES)
+            return denied ? .blocked : .empty
+        }
+    }
+
     static func children(of url: URL) -> [URL] {
         (try? fm.contentsOfDirectory(at: url,
                                      includingPropertiesForKeys: Array(sizeKeys),

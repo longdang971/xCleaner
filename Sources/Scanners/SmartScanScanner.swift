@@ -8,50 +8,102 @@ import Foundation
 /// còn chi tiết thì bấm "Xem" là có.
 struct SmartScanScanner: ModuleScanner {
 
-    /// Các ô hiện lúc quét khớp với các thẻ hiện sau khi quét — cùng tên, cùng thứ tự,
-    /// nên người dùng thấy đúng những ô đó lần lượt phình lên rồi thu lại.
-    var stages: [ScanStage] {
-        [.init(id: "user-cache", title: "Bộ nhớ đệm ứng dụng", icon: "shippingbox.fill"),
-         .init(id: "logs", title: "Nhật ký", icon: "doc.text.fill"),
-         .init(id: "crash", title: "Báo cáo sự cố", icon: "exclamationmark.triangle.fill"),
-         .init(id: "sys-cache", title: "Bộ nhớ đệm hệ thống", icon: "lock.shield.fill"),
-         .init(id: "trash", title: "Thùng rác", icon: "trash.fill"),
-         .init(id: "browsers", title: "Trình duyệt", icon: "globe")]
+    /// Một chặng của lần quét. Chặng nào chắc chắn không có gì thì không hiện ô,
+    /// nếu không người dùng sẽ thấy sáu ô lúc quét rồi chỉ còn năm thẻ lúc xong.
+    private enum Kind: CaseIterable {
+        case userCache, logs, crash, sysCache, trash, browsers
+
+        var stage: ScanStage {
+            switch self {
+            case .userCache: return .init(id: "user-cache", title: "Bộ nhớ đệm ứng dụng",
+                                          icon: "shippingbox.fill")
+            case .logs:      return .init(id: "logs", title: "Nhật ký", icon: "doc.text.fill")
+            case .crash:     return .init(id: "crash", title: "Báo cáo sự cố",
+                                          icon: "exclamationmark.triangle.fill")
+            case .sysCache:  return .init(id: "sys-cache", title: "Bộ nhớ đệm hệ thống",
+                                          icon: "lock.shield.fill")
+            case .trash:     return .init(id: "trash", title: "Thùng rác", icon: "trash.fill")
+            case .browsers:  return .init(id: "browsers", title: "Trình duyệt", icon: "globe")
+            }
+        }
     }
 
-    /// Chặng nội bộ của bộ quét rác hệ thống ứng với ô nào ở đây.
+    /// Chỉ đếm xem thư mục có gì không — không đo dung lượng, nên rất nhanh.
+    private static func hasContent(_ url: URL) -> Bool {
+        guard let items = try? FileManager.default.contentsOfDirectory(atPath: url.path) else {
+            return false
+        }
+        return items.contains { !$0.hasPrefix(".") }
+    }
+
+    /// Bị macOS chặn đọc cũng tính là "có thể có gì đó" — phải hiện ô để còn mời cấp quyền.
+    private static func trashHasContent() -> Bool {
+        let state = FileUtils.directoryState(FileUtils.homePath(".Trash"))
+        if state == .hasItems || state == .blocked { return true }
+        let uid = getuid()
+        for vol in FileUtils.mountedVolumes() where vol.path != "/" {
+            if hasContent(vol.appendingPathComponent(".Trashes/\(uid)")) { return true }
+        }
+        return false
+    }
+
+    private static func availableKinds() -> [Kind] {
+        var kinds: [Kind] = []
+        if hasContent(FileUtils.homePath("Library/Caches")) { kinds.append(.userCache) }
+        if hasContent(FileUtils.homePath("Library/Logs"))
+            || hasContent(URL(fileURLWithPath: "/Library/Logs")) { kinds.append(.logs) }
+        if hasContent(FileUtils.homePath("Library/Logs/DiagnosticReports"))
+            || hasContent(URL(fileURLWithPath: "/Library/Logs/DiagnosticReports")) {
+            kinds.append(.crash)
+        }
+        if hasContent(URL(fileURLWithPath: "/Library/Caches")) { kinds.append(.sysCache) }
+        if trashHasContent() { kinds.append(.trash) }
+        if !BrowserPrivacyScanner.installedBrowsers().isEmpty { kinds.append(.browsers) }
+        return kinds
+    }
+
+    var stages: [ScanStage] { Self.availableKinds().map(\.stage) }
+
+    /// Chặng nội bộ của bộ quét rác hệ thống ứng với loại nào ở đây.
     /// Hai loại nhật ký gộp về một ô, phần công cụ lập trình bị lọc nên không có ô riêng.
-    private static let junkStageMap: [Int: Int] = [0: 0, 1: 1, 2: 1, 3: 2, 4: 3]
+    private static let junkKindMap: [Int: Kind] = [0: .userCache, 1: .logs, 2: .logs,
+                                                   3: .crash, 4: .sysCache]
 
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var bytes: Int64 = 0
-        let stage = StageReporter(total: 6, emit: progress)
+        let kinds = Self.availableKinds()
+        let stage = StageReporter(total: kinds.count, emit: progress)
+        func index(_ k: Kind) -> Int? { kinds.firstIndex(of: k) }
 
-        stage.begin(0)
+        if let i = index(.userCache) ?? index(.logs) { stage.begin(i) }
         let junk = SystemJunkScanner()
             .scan(cancel: cancel) { p in
-                if let i = p.stageIndex, let mapped = Self.junkStageMap[i] { stage.jump(to: mapped) }
+                if let i = p.stageIndex, let kind = Self.junkKindMap[i],
+                   let mapped = index(kind) { stage.jump(to: mapped) }
                 let sb = p.stageBytes
-                if let v = sb[0] { stage.mark(0, v) }
-                if let a = sb[1], let b = sb[2] { stage.mark(1, a + b) }
-                if let v = sb[3] { stage.mark(2, v) }
-                if let v = sb[4] { stage.mark(3, v) }
+                if let i = index(.userCache), let v = sb[0] { stage.mark(i, v) }
+                if let i = index(.logs), let a = sb[1], let b = sb[2] { stage.mark(i, a + b) }
+                if let i = index(.crash), let v = sb[3] { stage.mark(i, v) }
+                if let i = index(.sysCache), let v = sb[4] { stage.mark(i, v) }
                 stage.working(p.message)
             }
             .filter { $0.safety == .safe }
         bytes += junk.reduce(0) { $0 + $1.totalSize }
         if cancel.isCancelled { return junk }
 
-        stage.begin(4)
-        let trash = TrashDownloadsScanner()
-            .scan(cancel: cancel) { stage.working($0.message) }
-            .filter { $0.id == "trash" }
-        let trashBytes = trash.reduce(0) { $0 + $1.totalSize }
-        bytes += trashBytes
-        stage.finish(4, bytes: trashBytes)
+        var trash: [CleanGroup] = []
+        if let ti = index(.trash) {
+            stage.begin(ti)
+            trash = TrashDownloadsScanner()
+                .scan(cancel: cancel) { stage.working($0.message) }
+                .filter { $0.id == "trash" }
+            let trashBytes = trash.reduce(0) { $0 + $1.totalSize }
+            bytes += trashBytes
+            stage.finish(ti, bytes: trashBytes)
+        }
         if cancel.isCancelled { return junk + trash }
 
-        stage.begin(5)
+        if let bi = index(.browsers) { stage.begin(bi) }
         let browsers = BrowserPrivacyScanner().scan(cancel: cancel) { stage.working($0.message) }
 
         var result: [CleanGroup] = []
@@ -60,17 +112,18 @@ struct SmartScanScanner: ModuleScanner {
         result += trash
         if let web = mergedBrowsers(from: browsers) {
             bytes += web.totalSize
-            stage.finish(5, bytes: web.totalSize)
+            if let bi = index(.browsers) { stage.finish(bi, bytes: web.totalSize) }
             result.append(web)
-        } else {
-            stage.finish(5, bytes: 0)
+        } else if let bi = index(.browsers) {
+            stage.finish(bi, bytes: 0)
         }
 
         // Thẻ nào nhiều dung lượng nhất lên trước, để hàng đầu luôn là thứ đáng nhìn nhất.
         result.sort { $0.totalSize > $1.totalSize }
 
         stage.done()
-        return result.filter { !$0.items.isEmpty }
+        // Nhóm rỗng thì bỏ, trừ khi nó rỗng chỉ vì macOS chặn đọc — cái đó phải cho người dùng thấy.
+        return result.filter { !$0.items.isEmpty || $0.needsFullDiskAccess }
     }
 
     // MARK: - Gộp nhật ký

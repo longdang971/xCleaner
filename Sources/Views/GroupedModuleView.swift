@@ -307,10 +307,13 @@ struct GroupTile: View {
             Spacer(minLength: 10)
 
             // Chưa chọn gì thì đưa tổng ra, mờ hơn — hiện "0 KB" chỉ làm người dùng tưởng thẻ rỗng.
-            Text(Fmt.size(group.selectedSize > 0 ? group.selectedSize : group.totalSize))
+            Text(group.items.isEmpty && group.needsFullDiskAccess
+                 ? "Cần quyền"
+                 : Fmt.size(group.selectedSize > 0 ? group.selectedSize : group.totalSize))
                 .font(.cardNumber)
                 .foregroundStyle(Color.white.opacity(group.selectedSize > 0 ? 1 : 0.55))
                 .contentTransition(.numericText())
+                .lineLimit(1).minimumScaleFactor(0.7)
 
             Text(group.selectedSize > 0
                  ? "\(group.items.count) mục · \(group.subtitle)"
@@ -344,7 +347,7 @@ struct GroupTile: View {
             .padding(.top, 12)
         }
         .padding(16)
-        .frame(height: 168, alignment: .topLeading)
+        .frame(height: 200, alignment: .topLeading)
         .tileSurface(gem: gem, icon: group.icon, bundleID: group.appBundleID,
                      highlighted: hovering)
         .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
