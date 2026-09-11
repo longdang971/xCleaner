@@ -45,8 +45,7 @@ struct UninstallerView: View {
 
     private var toolbar: some View {
         HStack(spacing: 10) {
-            SearchField(placeholder: "Tìm ứng dụng", text: $store.search)
-                .frame(width: 236)
+            SearchField(placeholder: "Tìm ứng dụng", text: $store.search, width: 236)
 
             sortButton
 

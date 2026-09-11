@@ -425,6 +425,9 @@ struct DiskUsageRing: View {
 struct SearchField: View {
     var placeholder: String = "Tìm kiếm"
     @Binding var text: String
+    /// Bề rộng phải đặt từ bên trong. Áp `.frame(width:)` từ ngoài lên view đã bo và cắt
+    /// làm viền bị vẽ lại ở kích thước khác, để lại hai vạch dọc mảnh ở hai đầu.
+    var width: CGFloat? = nil
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -446,7 +449,7 @@ struct SearchField: View {
             }
         }
         .padding(.horizontal, 12)
-        .frame(height: 30)
+        .frame(width: width, height: 30)
         .background(Capsule().fill(Color.white.opacity(0.13)))
         .overlay(Capsule().strokeBorder(Color.white.opacity(focused ? 0.55 : 0.14),
                                         lineWidth: focused ? 1.4 : 1))

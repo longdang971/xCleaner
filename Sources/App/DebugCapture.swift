@@ -50,9 +50,31 @@ enum DebugCapture {
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            // Ưu tiên CGWindowList: nó chụp đúng những gì màn hình hiển thị. cacheDisplay vẽ
+            // lại từng lớp view vào bitmap và để lộ biên của mỗi lớp thành các vạch mảnh —
+            // từng làm tôi đi sửa một lỗi giao diện không hề tồn tại.
+            if captureViaWindowList(to: path) {
+                if shouldQuit { NSApp.terminate(nil) }
+                return
+            }
+            NSLog("[xCleaner] CGWindowList không chụp được, quay về cacheDisplay")
             capture(to: path)
             if shouldQuit { NSApp.terminate(nil) }
         }
+    }
+
+    /// Chụp bằng CGWindowList thay vì cacheDisplay, để đối chiếu: nếu ảnh này sạch mà ảnh kia
+    /// có vạch thì vạch là do cách chụp chứ không có thật trên màn hình.
+    static func captureViaWindowList(to path: String) -> Bool {
+        guard let window = NSApp.windows.first(where: { $0.isVisible }) else { return false }
+        let id = CGWindowID(window.windowNumber)
+        guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, id,
+                                                  [.boundsIgnoreFraming, .bestResolution]) else {
+            return false
+        }
+        let rep = NSBitmapImageRep(cgImage: image)
+        guard let data = rep.representation(using: .png, properties: [:]) else { return false }
+        do { try data.write(to: URL(fileURLWithPath: path)); return true } catch { return false }
     }
 
     static func capture(to path: String) {

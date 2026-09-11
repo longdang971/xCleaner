@@ -40,11 +40,11 @@ enum CleanModule: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .smartScan:      return "sparkles"
-        case .systemJunk:     return "trash.slash"
+        case .systemJunk:     return "internaldrive.fill"
         case .uninstaller:    return "shippingbox"
         case .largeOld:       return "chart.pie"
         case .duplicates:     return "square.on.square"
-        case .trashDownloads: return "arrow.down.circle"
+        case .trashDownloads: return "trash.fill"
         case .privacy:        return "hand.raised"
         }
     }

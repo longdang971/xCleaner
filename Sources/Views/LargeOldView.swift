@@ -92,7 +92,7 @@ struct LargeOldView: View {
                 }
             }
             Spacer()
-            SearchField(placeholder: "Lọc theo tên", text: $store.search).frame(width: 190)
+            SearchField(placeholder: "Lọc theo tên", text: $store.search, width: 190)
             PillButton(title: "Chọn thư mục…", systemImage: "folder") { pickRoot() }
             PillButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
         }
