@@ -11,19 +11,16 @@ struct SmartScanScanner: ModuleScanner {
     /// Một chặng của lần quét. Chặng nào chắc chắn không có gì thì không hiện ô,
     /// nếu không người dùng sẽ thấy sáu ô lúc quét rồi chỉ còn năm thẻ lúc xong.
     private enum Kind: CaseIterable {
-        case userCache, logs, crash, sysCache, trash, browsers
+        case cache, logs, crash, trash, browsers
 
         var stage: ScanStage {
             switch self {
-            case .userCache: return .init(id: "user-cache", title: "Bộ nhớ đệm ứng dụng",
-                                          icon: "shippingbox.fill")
-            case .logs:      return .init(id: "logs", title: "Nhật ký", icon: "doc.text.fill")
-            case .crash:     return .init(id: "crash", title: "Báo cáo sự cố",
-                                          icon: "exclamationmark.triangle.fill")
-            case .sysCache:  return .init(id: "sys-cache", title: "Bộ nhớ đệm hệ thống",
-                                          icon: "lock.shield.fill")
-            case .trash:     return .init(id: "trash", title: "Thùng rác", icon: "trash.fill")
-            case .browsers:  return .init(id: "browsers", title: "Trình duyệt", icon: "globe")
+            case .cache:    return .init(id: "cache", title: "Bộ nhớ đệm", icon: "shippingbox.fill")
+            case .logs:     return .init(id: "logs", title: "Nhật ký", icon: "doc.text.fill")
+            case .crash:    return .init(id: "crash", title: "Báo cáo sự cố",
+                                         icon: "exclamationmark.triangle.fill")
+            case .trash:    return .init(id: "trash", title: "Thùng rác", icon: "trash.fill")
+            case .browsers: return .init(id: "browsers", title: "Trình duyệt", icon: "globe")
             }
         }
     }
@@ -49,14 +46,14 @@ struct SmartScanScanner: ModuleScanner {
 
     private static func availableKinds() -> [Kind] {
         var kinds: [Kind] = []
-        if hasContent(FileUtils.homePath("Library/Caches")) { kinds.append(.userCache) }
+        if hasContent(FileUtils.homePath("Library/Caches"))
+            || hasContent(URL(fileURLWithPath: "/Library/Caches")) { kinds.append(.cache) }
         if hasContent(FileUtils.homePath("Library/Logs"))
             || hasContent(URL(fileURLWithPath: "/Library/Logs")) { kinds.append(.logs) }
         if hasContent(FileUtils.homePath("Library/Logs/DiagnosticReports"))
             || hasContent(URL(fileURLWithPath: "/Library/Logs/DiagnosticReports")) {
             kinds.append(.crash)
         }
-        if hasContent(URL(fileURLWithPath: "/Library/Caches")) { kinds.append(.sysCache) }
         if trashHasContent() { kinds.append(.trash) }
         if !BrowserPrivacyScanner.installedBrowsers().isEmpty { kinds.append(.browsers) }
         return kinds
@@ -66,8 +63,8 @@ struct SmartScanScanner: ModuleScanner {
 
     /// Chặng nội bộ của bộ quét rác hệ thống ứng với loại nào ở đây.
     /// Hai loại nhật ký gộp về một ô, phần công cụ lập trình bị lọc nên không có ô riêng.
-    private static let junkKindMap: [Int: Kind] = [0: .userCache, 1: .logs, 2: .logs,
-                                                   3: .crash, 4: .sysCache]
+    private static let junkKindMap: [Int: Kind] = [0: .cache, 1: .cache, 2: .logs,
+                                                   3: .logs, 4: .crash]
 
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var bytes: Int64 = 0
@@ -75,16 +72,15 @@ struct SmartScanScanner: ModuleScanner {
         let stage = StageReporter(total: kinds.count, emit: progress)
         func index(_ k: Kind) -> Int? { kinds.firstIndex(of: k) }
 
-        if let i = index(.userCache) ?? index(.logs) { stage.begin(i) }
+        if let i = index(.cache) ?? index(.logs) { stage.begin(i) }
         let junk = SystemJunkScanner()
             .scan(cancel: cancel) { p in
                 if let i = p.stageIndex, let kind = Self.junkKindMap[i],
                    let mapped = index(kind) { stage.jump(to: mapped) }
                 let sb = p.stageBytes
-                if let i = index(.userCache), let v = sb[0] { stage.mark(i, v) }
-                if let i = index(.logs), let a = sb[1], let b = sb[2] { stage.mark(i, a + b) }
-                if let i = index(.crash), let v = sb[3] { stage.mark(i, v) }
-                if let i = index(.sysCache), let v = sb[4] { stage.mark(i, v) }
+                if let i = index(.cache), let a = sb[0], let b = sb[1] { stage.mark(i, a + b) }
+                if let i = index(.logs), let a = sb[2], let b = sb[3] { stage.mark(i, a + b) }
+                if let i = index(.crash), let v = sb[4] { stage.mark(i, v) }
                 stage.working(p.message)
             }
             .filter { $0.safety == .safe }
@@ -107,7 +103,10 @@ struct SmartScanScanner: ModuleScanner {
         let browsers = BrowserPrivacyScanner().scan(cancel: cancel) { stage.working($0.message) }
 
         var result: [CleanGroup] = []
-        result += junk.filter { $0.id != "user-logs" && $0.id != "sys-logs" }
+        result += junk.filter {
+            !["user-logs", "sys-logs", "user-cache", "sys-cache"].contains($0.id)
+        }
+        if let caches = mergedCaches(from: junk) { result.append(caches) }
         if let logs = mergedLogs(from: junk) { result.append(logs) }
         result += trash
         if let web = mergedBrowsers(from: browsers) {
@@ -124,6 +123,29 @@ struct SmartScanScanner: ModuleScanner {
         stage.done()
         // Nhóm rỗng thì bỏ, trừ khi nó rỗng chỉ vì macOS chặn đọc — cái đó phải cho người dùng thấy.
         return result.filter { !$0.items.isEmpty || $0.needsFullDiskAccess }
+    }
+
+    // MARK: - Gộp bộ nhớ đệm
+
+    private func mergedCaches(from groups: [CleanGroup]) -> CleanGroup? {
+        let user = groups.first { $0.id == "user-cache" }
+        let system = groups.first { $0.id == "sys-cache" }
+        guard user != nil || system != nil else { return nil }
+
+        var items: [CleanItem] = []
+        items += (user?.items ?? []).map { $0.inCategory("Bộ nhớ đệm ứng dụng") }
+        items += (system?.items ?? []).map { $0.inCategory("Bộ nhớ đệm hệ thống") }
+        guard !items.isEmpty else { return nil }
+
+        let needsAdmin = items.contains(where: \.requiresAdmin)
+        return CleanGroup(id: "cache",
+                          title: "Bộ nhớ đệm",
+                          subtitle: needsAdmin
+                            ? "Tệp tạm của ứng dụng và của macOS — phần hệ thống cần mật khẩu"
+                            : "Tệp tạm do ứng dụng và macOS tạo ra, sẽ được dựng lại khi cần",
+                          icon: "shippingbox.fill",
+                          safety: .safe,
+                          items: items)
     }
 
     // MARK: - Gộp nhật ký
