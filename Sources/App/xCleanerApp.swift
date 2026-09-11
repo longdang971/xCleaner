@@ -19,6 +19,14 @@ struct xCleanerApp: App {
         .defaultSize(width: 1140, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) { }
+            // Cảnh `Settings` của SwiftUI mở cửa sổ hệ thống màu sáng, lạc hẳn với app;
+            // ⌘, được nối thẳng vào bảng tuỳ chọn tự vẽ bên trong cửa sổ chính.
+            CommandGroup(replacing: .appSettings) {
+                Button("Cài đặt…") {
+                    NotificationCenter.default.post(name: .xcOpenSettings, object: nil)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
             CommandGroup(after: .appInfo) {
                 Button("Quét lại") {
                     NotificationCenter.default.post(name: .xcRescan, object: nil)
@@ -26,17 +34,13 @@ struct xCleanerApp: App {
                 .keyboardShortcut("r", modifiers: .command)
             }
         }
-
-        Settings {
-            SettingsView()
-                .environmentObject(state.settings)
-        }
     }
 }
 
 extension Notification.Name {
     static let xcRescan = Notification.Name("xCleaner.rescan")
     static let xcSelectModule = Notification.Name("xCleaner.selectModule")
+    static let xcOpenSettings = Notification.Name("xCleaner.openSettings")
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {

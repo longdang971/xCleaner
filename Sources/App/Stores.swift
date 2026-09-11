@@ -868,6 +868,7 @@ final class DuplicateStore: ObservableObject {
 @MainActor
 final class AppState: ObservableObject {
     @Published var module: CleanModule = .smartScan
+    @Published var showSettings = false
     let settings = AppSettings()
 
     private var scanStores: [CleanModule: ScanStore] = [:]

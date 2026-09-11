@@ -4,6 +4,7 @@ import SwiftUI
 /// và tên đầy đủ; mục đang chọn nằm trong một viên thuốc kính.
 struct SidebarView: View {
     @Binding var selection: CleanModule
+    var onOpenSettings: () -> Void = {}
 
     @State private var hovered: CleanModule?
     @State private var expanded = {
@@ -107,9 +108,7 @@ struct SidebarView: View {
     }
 
     private var settingsRow: some View {
-        Button {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        } label: {
+        Button(action: onOpenSettings) {
             HStack(spacing: 14) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 14))
@@ -117,7 +116,7 @@ struct SidebarView: View {
                     .frame(width: 32)
                     .frame(maxWidth: expanded ? nil : .infinity)
                 if expanded {
-                    Text("Tuỳ chọn")
+                    Text("Cài đặt")
                         .font(.system(size: 13.5))
                         .foregroundStyle(Color.white.opacity(0.75))
                         .fixedSize().transition(.opacity)

@@ -57,6 +57,13 @@ enum DebugCapture {
             }
         }
 
+        if let tab = env["XCLEANER_SETTINGS"], tab != "0" {
+            let _ = tab
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                NotificationCenter.default.post(name: .xcOpenSettings, object: tab)
+            }
+        }
+
         if action == "scan" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 NotificationCenter.default.post(name: .xcRescan, object: nil)

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var state: AppState
+    @State private var settingsTab: SettingsPanel.Tab = .general
 
     private var skin: ModuleSkin { ModuleSkin.skin(for: state.module) }
 
@@ -35,13 +36,27 @@ struct RootView: View {
 
             // Sidebar nằm đè lên nội dung để lúc nở ra bố cục không bị đẩy.
             HStack(spacing: 0) {
-                SidebarView(selection: $state.module)
+                SidebarView(selection: $state.module) {
+                    withAnimation(Motion.gentle) { state.showSettings = true }
+                }
                 Spacer(minLength: 0)
             }
         }
         .ignoresSafeArea(.container, edges: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.colorScheme, .dark)
+        .overlay {
+            if state.showSettings {
+                SettingsPanel(tab: $settingsTab) {
+                    withAnimation(Motion.gentle) { state.showSettings = false }
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xcOpenSettings)) { note in
+            if let raw = note.object as? String,
+               let t = SettingsPanel.Tab(rawValue: raw) { settingsTab = t }
+            withAnimation(Motion.gentle) { state.showSettings = true }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .xcSelectModule)) { note in
             guard let raw = note.object as? String,
                   let m = CleanModule(rawValue: raw) else { return }
