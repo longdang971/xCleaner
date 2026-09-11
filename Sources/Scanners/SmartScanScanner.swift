@@ -34,7 +34,7 @@ struct SmartScanScanner: ModuleScanner {
         let browsers = BrowserPrivacyScanner().scan(cancel: cancel, progress: forward(0.8, 0.2))
         var cacheItems: [CleanItem] = []
         for g in browsers {
-            for var item in g.items where item.name.hasPrefix("Bộ nhớ đệm") {
+            for var item in g.items where item.category == BrowserPrivacyScanner.Part.cache {
                 item.name = "\(g.title) · \(item.name)"
                 item.isSelected = true
                 cacheItems.append(item)

@@ -141,6 +141,15 @@ final class ScanStore: ObservableObject {
         for i in groups[gi].items.indices { groups[gi].items[i].isSelected = turnOn }
     }
 
+    /// Bật/tắt cả một phần trong nhóm (ví dụ toàn bộ "Cookie & đăng nhập").
+    func toggleCategory(groupID: String, category: String) {
+        guard let gi = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        let turnOn = groups[gi].selection(in: category) != .all
+        for i in groups[gi].items.indices where groups[gi].items[i].category == category {
+            groups[gi].items[i].isSelected = turnOn
+        }
+    }
+
     func toggleExpanded(_ groupID: String) {
         guard let gi = groups.firstIndex(where: { $0.id == groupID }) else { return }
         withAnimation(Motion.standard) { groups[gi].isExpanded.toggle() }
@@ -174,8 +183,14 @@ final class ScanStore: ObservableObject {
 
     // MARK: Dọn
 
-    func clean() {
-        let items = selectedItems
+    /// - Parameter groupID: chỉ dọn nhóm này; bỏ trống thì dọn mọi thứ đang được chọn.
+    func clean(groupID: String? = nil) {
+        let items: [CleanItem]
+        if let groupID, let g = groups.first(where: { $0.id == groupID }) {
+            items = g.items.filter(\.isSelected)
+        } else {
+            items = selectedItems
+        }
         guard !items.isEmpty else { return }
 
         phase = .cleaning

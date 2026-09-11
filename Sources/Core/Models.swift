@@ -89,6 +89,11 @@ struct CleanItem: Identifiable, Hashable {
     var isDirectory: Bool
     /// Xoá nội dung bên trong nhưng giữ lại chính thư mục (dùng cho ~/Library/Caches/<bundle>).
     var emptyContentsOnly: Bool
+    /// Tên phần mà mục này thuộc về, ví dụ "Lịch sử" hay "Tự động điền".
+    /// Rỗng nghĩa là nhóm không chia phần.
+    var category: String
+    /// Mức rủi ro của riêng mục này (nhóm có mức riêng, nhưng trong một nhóm vẫn có mục nặng nhẹ khác nhau).
+    var safety: SafetyLevel
 
     init(url: URL,
          name: String? = nil,
@@ -97,7 +102,9 @@ struct CleanItem: Identifiable, Hashable {
          isSelected: Bool = true,
          requiresAdmin: Bool = false,
          isDirectory: Bool = true,
-         emptyContentsOnly: Bool = false) {
+         emptyContentsOnly: Bool = false,
+         category: String = "",
+         safety: SafetyLevel = .safe) {
         self.id = UUID()
         self.url = url
         self.name = name ?? url.lastPathComponent
@@ -107,6 +114,8 @@ struct CleanItem: Identifiable, Hashable {
         self.requiresAdmin = requiresAdmin
         self.isDirectory = isDirectory
         self.emptyContentsOnly = emptyContentsOnly
+        self.category = category
+        self.safety = safety
     }
 
     static func == (lhs: CleanItem, rhs: CleanItem) -> Bool { lhs.id == rhs.id }
@@ -125,11 +134,34 @@ struct CleanGroup: Identifiable {
     var isExpanded: Bool = false
     /// Bundle id của ứng dụng đang mở giữ dữ liệu này (nếu có) — dùng để mời người dùng thoát app.
     var runningBundleID: String? = nil
+    /// macOS đang chặn đọc thư mục của nhóm này; danh sách vì thế chưa đầy đủ.
+    var needsFullDiskAccess: Bool = false
 
     var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
     var selectedSize: Int64 { items.filter(\.isSelected).reduce(0) { $0 + $1.size } }
     var selectedCount: Int { items.filter(\.isSelected).count }
     var needsAdmin: Bool { items.contains { $0.isSelected && $0.requiresAdmin } }
+
+    /// Các phần trong nhóm, theo đúng thứ tự scanner sinh ra.
+    var categories: [String] {
+        var seen = Set<String>()
+        var order: [String] = []
+        for i in items where !i.category.isEmpty {
+            if seen.insert(i.category).inserted { order.append(i.category) }
+        }
+        return order
+    }
+
+    func items(in category: String) -> [CleanItem] {
+        items.filter { $0.category == category }
+    }
+
+    func selection(in category: String) -> Selection {
+        let list = items(in: category)
+        let n = list.filter(\.isSelected).count
+        if n == 0 { return .none }
+        return n == list.count ? .all : .partial
+    }
 
     enum Selection { case none, partial, all }
 

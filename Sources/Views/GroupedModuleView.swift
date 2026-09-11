@@ -12,6 +12,8 @@ struct GroupedModuleView: View {
 
     @State private var confirming = false
     @State private var reviewing: String?
+    /// Nhóm sẽ được dọn khi xác nhận; nil nghĩa là dọn tất cả những gì đang chọn.
+    @State private var cleanScope: String?
 
     private var skin: ModuleSkin { ModuleSkin.skin(for: module) }
 
@@ -24,14 +26,16 @@ struct GroupedModuleView: View {
                 if let id = reviewing, let group = store.groups.first(where: { $0.id == id }) {
                     GroupDetailView(group: group,
                                     skin: skin,
-                                    totalSelected: store.totalSelected,
+                                    groupSelectedSize: group.selectedSize,
                                     onBack: { withAnimation(Motion.standard) { reviewing = nil } },
                                     onToggleGroup: { store.toggleGroup(group.id) },
                                     onToggleItem: { store.toggleItem(groupID: group.id, itemID: $0) },
+                                    onToggleCategory: { store.toggleCategory(groupID: group.id, category: $0) },
                                     onQuitApp: { store.quitApp(groupID: group.id) },
                                     onClean: {
+                                        cleanScope = group.id
                                         if settings.confirmBeforeClean { confirming = true }
-                                        else { store.clean() }
+                                        else { store.clean(groupID: group.id) }
                                     })
                     .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
                                             removal: .opacity))
@@ -58,20 +62,37 @@ struct GroupedModuleView: View {
             }
             #endif
         }
-        .confirmationDialog("Dọn \(Fmt.size(store.totalSelected))?",
+        .confirmationDialog("Dọn \(Fmt.size(scopeSize))?",
                             isPresented: $confirming, titleVisibility: .visible) {
-            Button("Dọn ngay", role: .destructive) { reviewing = nil; store.clean() }
+            Button("Dọn ngay", role: .destructive) {
+                let scope = cleanScope
+                reviewing = nil
+                store.clean(groupID: scope)
+            }
             Button("Huỷ", role: .cancel) { }
         } message: {
             Text(confirmMessage)
         }
     }
 
+    /// Những mục sẽ bị xoá nếu xác nhận ngay bây giờ.
+    private var scopeItems: [CleanItem] {
+        if let id = cleanScope, let g = store.groups.first(where: { $0.id == id }) {
+            return g.items.filter(\.isSelected)
+        }
+        return store.selectedItems
+    }
+
+    private var scopeSize: Int64 { scopeItems.reduce(0) { $0 + $1.size } }
+
     private var confirmMessage: String {
-        var s = "\(store.selectedItems.count) mục sẽ bị "
+        var s = "\(scopeItems.count) mục sẽ bị "
         s += settings.moveToTrash ? "chuyển vào Thùng rác." : "xoá vĩnh viễn."
-        if store.needsAdmin {
+        if scopeItems.contains(where: \.requiresAdmin) {
             s += "\nMột số mục nằm trong thư mục hệ thống, macOS sẽ hỏi mật khẩu quản trị của bạn."
+        }
+        if scopeItems.contains(where: { $0.safety == .sensitive }) {
+            s += "\nTrong đó có dữ liệu tự động điền — xoá rồi không lấy lại được."
         }
         return s
     }
@@ -188,6 +209,7 @@ struct GroupedModuleView: View {
 
             CircleActionButton(title: "Dọn", accent: skin.action,
                                isEnabled: store.totalSelected > 0) {
+                cleanScope = nil
                 if settings.confirmBeforeClean { confirming = true } else { store.clean() }
             }
         }
@@ -233,13 +255,24 @@ struct GroupTile: View {
                 .padding(.top, 1)
 
             HStack(spacing: 6) {
-                if group.safety != .safe { SafetyBadge(level: group.safety) }
-                if group.items.contains(where: \.requiresAdmin) { AdminBadge() }
+                // Chỉ một nhãn: nhồi nhiều nhãn vào hàng này là nút bị nén tới mức cắt mất chữ.
+                if group.needsFullDiskAccess {
+                    SafetyBadge(level: .sensitive)
+                } else if group.items.contains(where: \.requiresAdmin) {
+                    AdminBadge()
+                } else if group.safety != .safe {
+                    SafetyBadge(level: group.safety)
+                }
                 Spacer(minLength: 4)
-                if group.runningBundleID != nil, let onQuitApp {
-                    PillButton(title: "Thoát app", kind: .warning, action: onQuitApp)
+                if group.needsFullDiskAccess {
+                    PillButton(title: "Cấp quyền", kind: .warning, action: openFullDiskAccess)
+                        .fixedSize()
+                } else if group.runningBundleID != nil, let onQuitApp {
+                    PillButton(title: "Thoát", kind: .warning, action: onQuitApp)
+                        .fixedSize()
                 }
                 PillButton(title: "Xem", kind: hovering ? .solid : .glass, action: onReview)
+                    .fixedSize()
             }
             .padding(.top, 12)
         }
@@ -284,10 +317,11 @@ struct GroupTile: View {
 struct GroupDetailView: View {
     let group: CleanGroup
     let skin: ModuleSkin
-    let totalSelected: Int64
+    let groupSelectedSize: Int64
     var onBack: () -> Void
     var onToggleGroup: () -> Void
     var onToggleItem: (UUID) -> Void
+    var onToggleCategory: (String) -> Void
     var onQuitApp: () -> Void
     var onClean: () -> Void
 
@@ -313,6 +347,10 @@ struct GroupDetailView: View {
                     TriStateBox(state: group.selection, action: onToggleGroup)
                     Text(group.subtitle).font(.system(size: 11.5)).foregroundStyle(Palette.textSecond)
                     Spacer()
+                    if group.needsFullDiskAccess {
+                        PillButton(title: "Cấp quyền truy cập đĩa", kind: .warning,
+                                   action: openFullDiskAccess)
+                    }
                     if group.runningBundleID != nil {
                         PillButton(title: "Thoát app", kind: .warning, action: onQuitApp)
                     }
@@ -325,18 +363,34 @@ struct GroupDetailView: View {
                 Divider().overlay(Color.white.opacity(0.12))
 
                 ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(group.items.prefix(visibleLimit)) { item in
-                            ItemRow(item: item) { onToggleItem(item.id) }
-                        }
-                        if group.items.count > visibleLimit {
-                            Text("… và \(group.items.count - visibleLimit) mục nữa (đã tính vào tổng)")
-                                .font(.system(size: 11)).foregroundStyle(Palette.textFaint)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 16).padding(.vertical, 10)
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        if group.categories.isEmpty {
+                            ForEach(group.items.prefix(visibleLimit)) { item in
+                                ItemRow(item: item) { onToggleItem(item.id) }
+                            }
+                            if group.items.count > visibleLimit {
+                                Text("… và \(group.items.count - visibleLimit) mục nữa (đã tính vào tổng)")
+                                    .font(.system(size: 11)).foregroundStyle(Palette.textFaint)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 16).padding(.vertical, 10)
+                            }
+                        } else {
+                            ForEach(group.categories, id: \.self) { part in
+                                Section {
+                                    ForEach(group.items(in: part)) { item in
+                                        ItemRow(item: item) { onToggleItem(item.id) }
+                                    }
+                                } header: {
+                                    CategoryHeader(title: part,
+                                                   items: group.items(in: part),
+                                                   selection: group.selection(in: part)) {
+                                        onToggleCategory(part)
+                                    }
+                                }
+                            }
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.bottom, 4)
                 }
                 .scrollIndicators(.never)
 
@@ -346,8 +400,9 @@ struct GroupDetailView: View {
                     Text("\(group.selectedCount)/\(group.items.count) mục đã chọn ở nhóm này")
                         .font(.system(size: 11.5)).foregroundStyle(Palette.textSecond)
                     Spacer()
-                    PillButton(title: "Dọn \(Fmt.size(totalSelected))", systemImage: "sparkles",
-                               kind: .solid, isEnabled: totalSelected > 0, action: onClean)
+                    PillButton(title: "Dọn \(Fmt.size(groupSelectedSize)) của nhóm này",
+                               systemImage: "sparkles",
+                               kind: .solid, isEnabled: groupSelectedSize > 0, action: onClean)
                 }
                 .padding(.horizontal, 16)
                 .frame(height: 50)
@@ -385,6 +440,10 @@ struct ItemRow: View {
             }
 
             Spacer(minLength: 8)
+
+            if item.safety == .sensitive {
+                SafetyBadge(level: .sensitive)
+            }
 
             if item.requiresAdmin {
                 Image(systemName: "lock.fill").font(.system(size: 9)).foregroundStyle(Palette.warning)
@@ -493,4 +552,69 @@ struct CleanOverlay: View {
         if !o.failures.isEmpty { parts.append("\(o.failures.count) mục bị bỏ qua") }
         return parts.joined(separator: " · ")
     }
+}
+
+
+// MARK: - Đầu một phần trong danh sách chi tiết
+
+/// Thanh tiêu đề của một phần ("Cookie & đăng nhập"…), dính ở đầu khi cuộn.
+/// Bấm vào ô vuông là chọn hoặc bỏ chọn cả phần.
+struct CategoryHeader: View {
+    let title: String
+    let items: [CleanItem]
+    let selection: CleanGroup.Selection
+    var onToggle: () -> Void
+
+    @State private var hovering = false
+
+    private var selectedSize: Int64 { items.filter(\.isSelected).reduce(0) { $0 + $1.size } }
+    private var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
+    private var worstSafety: SafetyLevel { items.map(\.safety).max() ?? .safe }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            TriStateBox(state: selection, action: onToggle)
+
+            Text(title)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white)
+
+            if worstSafety != .safe { SafetyBadge(level: worstSafety) }
+
+            Spacer(minLength: 6)
+
+            Text("\(items.filter(\.isSelected).count)/\(items.count) mục")
+                .font(.system(size: 10.5))
+                .foregroundStyle(Palette.textFaint)
+
+            Text(selectedSize == totalSize ? Fmt.size(totalSize)
+                                           : "\(Fmt.size(selectedSize)) / \(Fmt.size(totalSize))")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(Palette.textSecond)
+                .contentTransition(.numericText())
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 34)
+        .background {
+            ZStack {
+                Rectangle().fill(.black.opacity(0.28))
+                Rectangle().fill(.white.opacity(hovering ? 0.06 : 0))
+            }
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color.white.opacity(0.10)).frame(height: 1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onToggle)
+        .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
+    }
+}
+
+
+/// Mở thẳng mục Toàn quyền truy cập đĩa trong Cài đặt Hệ thống.
+func openFullDiskAccess() {
+    guard let url = URL(string:
+        "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles")
+    else { return }
+    NSWorkspace.shared.open(url)
 }

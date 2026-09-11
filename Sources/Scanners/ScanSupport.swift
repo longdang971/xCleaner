@@ -32,7 +32,9 @@ extension ModuleScanner {
                   detail: String = "",
                   selected: Bool = true,
                   emptyContentsOnly: Bool = false,
-                  cancel: CancelToken) -> CleanItem? {
+                  cancel: CancelToken,
+                  category: String = "",
+                  safety: SafetyLevel = .safe) -> CleanItem? {
         guard FileUtils.exists(url) else { return nil }
         guard SafetyGuard.isValid(url) else { return nil }
         let size = FileUtils.size(of: url, isCancelled: { cancel.isCancelled })
@@ -44,7 +46,9 @@ extension ModuleScanner {
                          isSelected: selected,
                          requiresAdmin: PrivilegedRunner.needsAdmin(for: url),
                          isDirectory: FileUtils.isDirectory(url),
-                         emptyContentsOnly: emptyContentsOnly)
+                         emptyContentsOnly: emptyContentsOnly,
+                         category: category,
+                         safety: safety)
     }
 
     /// Duyệt từng thư mục con của `parent` và biến mỗi con thành một item.

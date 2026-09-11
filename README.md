@@ -29,7 +29,7 @@ Học theo CleanMyMac 5 nhưng dựng lại hoàn toàn bằng SwiftUI, không d
 | Quét thông minh | Gom rác hệ thống + Thùng rác + bộ nhớ đệm trình duyệt, tất cả đều an toàn để xoá |
 | Rác hệ thống | Bộ nhớ đệm, nhật ký, báo cáo sự cố của người dùng và của `/Library`, rác công cụ lập trình |
 | Thùng rác & Tải về | Thùng rác mọi ổ đĩa, bộ cài cũ, tệp tải lâu ngày, đính kèm thư, ảnh chụp màn hình |
-| Riêng tư | Cookie, lịch sử, phiên, bộ nhớ đệm của Safari, Chrome, Edge, Brave, Firefox, Arc, Opera, Vivaldi, Zen |
+| Riêng tư | Quét sâu từng trình duyệt (Safari, Chrome, Edge, Brave, Firefox, Arc, Opera, Vivaldi, Zen), chia thành 7 phần chọn riêng được |
 | Gỡ ứng dụng | Xoá app cùng dữ liệu, tuỳ chọn, container, tác vụ nền, biên nhận cài đặt |
 | Tệp lớn & cũ | Duyệt thư mục theo dung lượng và ngày dùng cuối |
 | Tệp trùng lặp | Ba vòng lọc: kích thước → băm hai đầu → SHA-256 toàn bộ |
@@ -98,6 +98,26 @@ iconutil -c icns /tmp/xCleaner.iconset -o Resources/AppIcon.icns
 - **Tệp cá nhân** (Tệp lớn & cũ, Tệp trùng lặp) luôn vào Thùng rác, không xoá thẳng.
 - **Firefox**: không bao giờ xoá `places.sqlite` vì tệp đó chứa cả lịch sử lẫn dấu trang.
 - **Chromium**: `History` an toàn để xoá, dấu trang nằm ở tệp `Bookmarks` riêng.
+
+### Mục Riêng tư quét những gì
+
+Bảy phần, mỗi phần chọn hoặc bỏ chọn riêng được ngay trong màn hình "Xem":
+
+| Phần | Gồm những gì | Chọn sẵn |
+|---|---|---|
+| Lịch sử duyệt web | địa chỉ đã truy cập, gợi ý thanh địa chỉ, lối tắt, trang hay vào, liên kết đã xem, biểu tượng trang | ✓ |
+| Danh sách tải về | danh sách tệp đã tải (tệp vẫn còn nguyên) | ✓ |
+| Cookie & đăng nhập | cookie, Trust Token | ✗ |
+| Tự động điền | biểu mẫu, địa chỉ, thẻ thanh toán đã lưu | ✗ (cẩn trọng) |
+| Thẻ & phiên làm việc | thẻ đang mở, thẻ vừa đóng, phiên lần trước, thẻ iCloud, Session Storage | ✗ |
+| Bộ nhớ đệm | cache trang, cache mã, GPU, Dawn/WebGPU, Service Worker | ✓ |
+| Dữ liệu trang web | Local Storage, IndexedDB, Web SQL, File System API | ✗ |
+
+**Mật khẩu đã lưu** (`Login Data`, `logins.json`, `key4.db`) cố tình **không** có trong danh sách:
+mất mật khẩu là mất hẳn, và không ai mong một công cụ dọn rác đụng tới chúng.
+
+Khi macOS chặn đọc thư mục Safari (chưa cấp Toàn quyền truy cập đĩa), thẻ Safari sẽ nói rõ
+danh sách chưa đầy đủ và có nút mở thẳng trang cấp quyền.
 
 ## Cần cấp quyền
 
