@@ -220,12 +220,13 @@ struct GroupedModuleView: View {
         }
         .overlay(alignment: .topTrailing) {
             if !store.groups.isEmpty {
+                // Một nút duy nhất, đổi vai theo trạng thái: đang có mục được chọn thì nó bỏ
+                // chọn, không còn mục nào thì nó chọn lại tất cả.
+                let hasSelection = store.totalSelected > 0
                 IconToolbar(actions: [
-                    .init(icon: "checkmark.circle", help: "Chọn tất cả") {
-                        withAnimation(Motion.snappy) { store.selectAll(true) }
-                    },
-                    .init(icon: "circle.slash", help: "Bỏ chọn tất cả") {
-                        withAnimation(Motion.snappy) { store.selectAll(false) }
+                    .init(icon: hasSelection ? "circle.slash" : "checkmark.circle",
+                          help: hasSelection ? "Bỏ chọn tất cả" : "Chọn tất cả") {
+                        withAnimation(Motion.snappy) { store.selectAll(!hasSelection) }
                     },
                     .init(icon: "arrow.clockwise", help: "Quét lại") { store.scan() }
                 ])
