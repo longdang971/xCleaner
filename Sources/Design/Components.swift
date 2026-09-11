@@ -653,9 +653,6 @@ struct GroupGlyph: View {
 struct ResultHeadline<Trailing: View>: View {
     var selectedBytes: Int64
     var totalBytes: Int64
-    var itemCount: Int
-    var groupCount: Int
-    var restoredCount: Int
     @ViewBuilder var trailing: Trailing
 
     private var hasSelection: Bool { selectedBytes > 0 }
@@ -683,131 +680,10 @@ struct ResultHeadline<Trailing: View>: View {
                     .foregroundStyle(.white)
             }
 
-            Text(contextLine)
-                .font(.system(size: 12.5))
-                .foregroundStyle(Palette.textSecond)
-                .multilineTextAlignment(.center)
-
             trailing
         }
         .frame(maxWidth: 640)
         .animation(Motion.gentle, value: selectedBytes)
-    }
-
-    private var contextLine: String {
-        var parts: [String] = []
-        if hasSelection {
-            parts.append("\(itemCount) mục trong \(groupCount) nhóm")
-            let left = totalBytes - selectedBytes
-            if left > 0 { parts.append("còn \(Fmt.size(left)) chưa chọn") }
-        } else {
-            parts.append("Tìm thấy \(Fmt.size(totalBytes)) trong \(groupCount) nhóm")
-        }
-        if restoredCount > 0 { parts.append("giữ lựa chọn lần trước cho \(restoredCount) mục") }
-        return parts.joined(separator: " · ")
-    }
-}
-
-// MARK: - Cụm nút biểu tượng ở góc
-
-/// Vài thao tác phụ gom thành một cụm nhỏ nằm ở góc, nhường chỗ giữa cho tiêu đề.
-struct IconToolbar: View {
-    struct Action: Identifiable {
-        let id = UUID()
-        let icon: String
-        let help: String
-        let run: () -> Void
-    }
-
-    var actions: [Action]
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(actions.enumerated()), id: \.element.id) { idx, action in
-                IconToolbarButton(action: action)
-                if idx < actions.count - 1 {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.16))
-                        .frame(width: 1, height: 16)
-                }
-            }
-        }
-        .background(Capsule().fill(Color.white.opacity(0.13)))
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
-        .clipShape(Capsule())
-    }
-}
-
-private struct IconToolbarButton: View {
-    let action: IconToolbar.Action
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action.run) {
-            Image(systemName: action.icon)
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(.white)
-                .frame(width: 36, height: 30)
-                .background(Color.white.opacity(hovering ? 0.16 : 0))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(action.help)
-        .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
-    }
-}
-
-
-// MARK: - Khung thẻ dùng chung
-
-/// Nền, biểu tượng in chìm, viền và bóng của một thẻ. Thẻ kết quả, thẻ lúc quét và thẻ lúc dọn
-/// đều dùng chung khung này nên ba màn hình trông như một.
-struct TileSurface: ViewModifier {
-    let gem: [Color]
-    var icon: String? = nil
-    var bundleID: String? = nil
-    var highlighted: Bool = false
-    var dimmed: Bool = false
-
-    func body(content: Content) -> some View {
-        content
-            .background {
-                ZStack(alignment: .topTrailing) {
-                    LinearGradient(colors: [gem[1].opacity(highlighted ? 0.92 : 0.82),
-                                            gem[2].opacity(highlighted ? 0.78 : 0.62)],
-                                   startPoint: .topTrailing, endPoint: .bottomLeading)
-
-                    if let icon {
-                        GroupGlyph(bundleID: bundleID, fallback: icon,
-                                   size: bundleID == nil ? 72 : 80,
-                                   opacity: highlighted ? 0.26 : 0.19)
-                            .padding(.trailing, 14)
-                            .padding(.top, 12)
-                    }
-
-                    LinearGradient(colors: [.clear, .black.opacity(0.30)],
-                                   startPoint: .topTrailing, endPoint: .bottomLeading)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(highlighted ? 0.42 : 0.18),
-                                  lineWidth: highlighted ? 1.5 : 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
-            .shadow(color: highlighted ? gem[1].opacity(0.55) : .black.opacity(0.24),
-                    radius: highlighted ? 22 : 16, y: 7)
-            .opacity(dimmed ? 0.55 : 1)
-            .saturation(dimmed ? 0.7 : 1)
-    }
-}
-
-extension View {
-    func tileSurface(gem: [Color], icon: String? = nil, bundleID: String? = nil,
-                     highlighted: Bool = false, dimmed: Bool = false) -> some View {
-        modifier(TileSurface(gem: gem, icon: icon, bundleID: bundleID,
-                             highlighted: highlighted, dimmed: dimmed))
     }
 }
 

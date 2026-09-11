@@ -185,10 +185,7 @@ struct GroupedModuleView: View {
                     }
                 } else {
                     ResultHeadline(selectedBytes: store.totalSelected,
-                                   totalBytes: store.totalFound,
-                                   itemCount: store.selectedItems.count,
-                                   groupCount: store.groups.count,
-                                   restoredCount: store.restoredCount) {
+                                   totalBytes: store.totalFound) {
                         EmptyView()
                     }
                 }
