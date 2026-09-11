@@ -195,13 +195,7 @@ struct GroupedModuleView: View {
     private var hint: String {
         switch module {
         case .smartScan:
-            return "Dọn nhanh những thứ an toàn tuyệt đối. Mọi mục tick sẵn đều có thể xoá mà không mất gì."
-        case .systemJunk:
-            return "Gồm cả /Library — những mục đó sẽ cần mật khẩu quản trị khi dọn."
-        case .privacy:
-            return "Dấu vết duyệt web của mọi trình duyệt trên máy. Nhớ thoát trình duyệt trước khi dọn."
-        case .trashDownloads:
-            return "Thùng rác, bộ cài cũ và tệp tải về lâu ngày. Xem qua danh sách trước khi dọn."
+            return "Rác hệ thống, thùng rác, tệp tải về và dấu vết trình duyệt — tất cả trong một lần quét. Mọi mục tick sẵn đều xoá được mà không mất gì."
         default:
             return ""
         }

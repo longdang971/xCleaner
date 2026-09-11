@@ -11,16 +11,17 @@ struct SmartScanScanner: ModuleScanner {
     /// Một chặng của lần quét. Chặng nào chắc chắn không có gì thì không hiện ô,
     /// nếu không người dùng sẽ thấy sáu ô lúc quét rồi chỉ còn năm thẻ lúc xong.
     private enum Kind: CaseIterable {
-        case cache, logs, crash, trash, browsers
+        case cache, logs, browsers, trash, misc
 
         var stage: ScanStage {
             switch self {
             case .cache:    return .init(id: "cache", title: "Bộ nhớ đệm", icon: "shippingbox.fill")
-            case .logs:     return .init(id: "logs", title: "Nhật ký", icon: "doc.text.fill")
-            case .crash:    return .init(id: "crash", title: "Báo cáo sự cố",
-                                         icon: "exclamationmark.triangle.fill")
-            case .trash:    return .init(id: "trash", title: "Thùng rác", icon: "trash.fill")
+            case .logs:     return .init(id: "logs", title: "Nhật ký & báo cáo",
+                                         icon: "doc.text.fill")
             case .browsers: return .init(id: "browsers", title: "Trình duyệt", icon: "globe")
+            case .trash:    return .init(id: "trash", title: "Thùng rác & Tải về",
+                                         icon: "trash.fill")
+            case .misc:     return .init(id: "misc", title: "Mục khác", icon: "macwindow")
             }
         }
     }
@@ -49,13 +50,17 @@ struct SmartScanScanner: ModuleScanner {
         if hasContent(FileUtils.homePath("Library/Caches"))
             || hasContent(URL(fileURLWithPath: "/Library/Caches")) { kinds.append(.cache) }
         if hasContent(FileUtils.homePath("Library/Logs"))
-            || hasContent(URL(fileURLWithPath: "/Library/Logs")) { kinds.append(.logs) }
-        if hasContent(FileUtils.homePath("Library/Logs/DiagnosticReports"))
-            || hasContent(URL(fileURLWithPath: "/Library/Logs/DiagnosticReports")) {
-            kinds.append(.crash)
+            || hasContent(URL(fileURLWithPath: "/Library/Logs"))
+            || hasContent(FileUtils.homePath("Library/Logs/DiagnosticReports")) {
+            kinds.append(.logs)
         }
-        if trashHasContent() { kinds.append(.trash) }
         if !BrowserPrivacyScanner.installedBrowsers().isEmpty { kinds.append(.browsers) }
+        if trashHasContent() || hasContent(FileUtils.homePath("Downloads")) {
+            kinds.append(.trash)
+        }
+        if hasContent(FileUtils.homePath("Library/Saved Application State")) {
+            kinds.append(.misc)
+        }
         return kinds
     }
 
@@ -63,8 +68,8 @@ struct SmartScanScanner: ModuleScanner {
 
     /// Chặng nội bộ của bộ quét rác hệ thống ứng với loại nào ở đây.
     /// Hai loại nhật ký gộp về một ô, phần công cụ lập trình bị lọc nên không có ô riêng.
-    private static let junkKindMap: [Int: Kind] = [0: .cache, 1: .cache, 2: .logs,
-                                                   3: .logs, 4: .crash]
+    private static let junkKindMap: [Int: Kind] = [0: .cache, 1: .cache, 2: .cache,
+                                                   3: .logs, 4: .logs, 5: .logs, 6: .misc]
 
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var bytes: Int64 = 0
@@ -78,14 +83,17 @@ struct SmartScanScanner: ModuleScanner {
                 if let i = p.stageIndex, let kind = Self.junkKindMap[i],
                    let mapped = index(kind) { stage.jump(to: mapped) }
                 let sb = p.stageBytes
-                if let i = index(.cache), let a = sb[0], let b = sb[1] { stage.mark(i, a + b) }
-                if let i = index(.logs), let a = sb[2], let b = sb[3] { stage.mark(i, a + b) }
-                if let i = index(.crash), let v = sb[4] { stage.mark(i, v) }
+                if let i = index(.cache), let a = sb[0], let b = sb[1], let c = sb[2] {
+                    stage.mark(i, a + b + c)
+                }
+                if let i = index(.logs), let a = sb[3], let b = sb[4], let c = sb[5] {
+                    stage.mark(i, a + b + c)
+                }
+                if let i = index(.misc), let v = sb[6] { stage.mark(i, v) }
                 // Chuyển tiếp mục vừa tìm thấy, nếu không thẻ đang quét chẳng có gì để liệt kê.
                 if let n = p.foundName, p.foundBytes > 0 { stage.found(n, p.foundBytes) }
                 stage.working(p.message)
             }
-            .filter { $0.safety == .safe }
         bytes += junk.reduce(0) { $0 + $1.totalSize }
         if cancel.isCancelled { return junk }
 
@@ -97,7 +105,6 @@ struct SmartScanScanner: ModuleScanner {
                     if let n = p.foundName, p.foundBytes > 0 { stage.found(n, p.foundBytes) }
                     stage.working(p.message)
                 }
-                .filter { $0.id == "trash" }
             let trashBytes = trash.reduce(0) { $0 + $1.totalSize }
             bytes += trashBytes
             stage.finish(ti, bytes: trashBytes)
@@ -111,12 +118,13 @@ struct SmartScanScanner: ModuleScanner {
         }
 
         var result: [CleanGroup] = []
-        result += junk.filter {
-            !["user-logs", "sys-logs", "user-cache", "sys-cache"].contains($0.id)
-        }
         if let caches = mergedCaches(from: junk) { result.append(caches) }
         if let logs = mergedLogs(from: junk) { result.append(logs) }
-        result += trash
+        if let bin = mergedTrash(from: trash) { result.append(bin) }
+        if var misc = junk.first(where: { $0.id == "misc" }) {
+            misc.title = "Mục khác"      // tên gốc dài quá so với bề ngang một thẻ
+            result.append(misc)
+        }
         if let web = mergedBrowsers(from: browsers) {
             bytes += web.totalSize
             if let bi = index(.browsers) { stage.finish(bi, bytes: web.totalSize) }
@@ -138,21 +146,19 @@ struct SmartScanScanner: ModuleScanner {
     private func mergedCaches(from groups: [CleanGroup]) -> CleanGroup? {
         let user = groups.first { $0.id == "user-cache" }
         let system = groups.first { $0.id == "sys-cache" }
-        guard user != nil || system != nil else { return nil }
 
+        let dev = groups.first { $0.id == "dev-junk" }
         var items: [CleanItem] = []
         items += (user?.items ?? []).map { $0.inCategory("Bộ nhớ đệm ứng dụng") }
         items += (system?.items ?? []).map { $0.inCategory("Bộ nhớ đệm hệ thống") }
+        items += (dev?.items ?? []).map { $0.inCategory("Công cụ lập trình") }
         guard !items.isEmpty else { return nil }
 
-        let needsAdmin = items.contains(where: \.requiresAdmin)
         return CleanGroup(id: "cache",
                           title: "Bộ nhớ đệm",
-                          subtitle: needsAdmin
-                            ? "Tệp tạm của ứng dụng và của macOS — phần hệ thống cần mật khẩu"
-                            : "Tệp tạm do ứng dụng và macOS tạo ra, sẽ được dựng lại khi cần",
+                          subtitle: "Tệp tạm của ứng dụng, macOS và công cụ lập trình",
                           icon: "shippingbox.fill",
-                          safety: .safe,
+                          safety: items.map(\.safety).max() ?? .safe,
                           items: items)
     }
 
@@ -161,20 +167,49 @@ struct SmartScanScanner: ModuleScanner {
     private func mergedLogs(from groups: [CleanGroup]) -> CleanGroup? {
         let user = groups.first { $0.id == "user-logs" }
         let system = groups.first { $0.id == "sys-logs" }
-        guard user != nil || system != nil else { return nil }
+        let crash = groups.first { $0.id == "crash" }
 
         var items: [CleanItem] = []
         items += (user?.items ?? []).map { $0.inCategory("Nhật ký người dùng") }
         items += (system?.items ?? []).map { $0.inCategory("Nhật ký hệ thống") }
+        items += (crash?.items ?? []).map { $0.inCategory("Báo cáo sự cố") }
         guard !items.isEmpty else { return nil }
 
-        let needsAdmin = items.contains(where: \.requiresAdmin)
         return CleanGroup(id: "logs",
-                          title: "Nhật ký",
-                          subtitle: "Log của ứng dụng và của macOS",
+                          title: "Nhật ký & báo cáo",
+                          subtitle: "Log của ứng dụng, của macOS và biên bản lúc gặp lỗi",
                           icon: "doc.text.fill",
-                          safety: .safe,
+                          safety: items.map(\.safety).max() ?? .safe,
                           items: items)
+    }
+
+    // MARK: - Gộp thùng rác và thư mục tải về
+
+    private func mergedTrash(from groups: [CleanGroup]) -> CleanGroup? {
+        // Mỗi nhóm con thành một phần, giữ nguyên mục nào được tick sẵn mục nào không.
+        let parts: [(String, String)] = [("trash", "Thùng rác"),
+                                         ("installers", "Bộ cài đã dùng xong"),
+                                         ("old-downloads", "Tệp tải về đã lâu"),
+                                         ("mail-attach", "Đính kèm thư"),
+                                         ("screenshots", "Ảnh chụp màn hình")]
+        var items: [CleanItem] = []
+        var blocked = false
+        for (id, label) in parts {
+            guard let g = groups.first(where: { $0.id == id }) else { continue }
+            if g.needsFullDiskAccess { blocked = true }
+            items += g.items.map { $0.inCategory(label) }
+        }
+        guard !items.isEmpty || blocked else { return nil }
+
+        return CleanGroup(id: "trash",
+                          title: "Thùng rác & Tải về",
+                          subtitle: blocked
+                            ? "macOS đang chặn đọc Thùng rác — cần Toàn quyền truy cập đĩa"
+                            : "Thùng rác mọi ổ đĩa, bộ cài cũ và tệp tải về lâu ngày",
+                          icon: "trash.fill",
+                          safety: items.map(\.safety).max() ?? .safe,
+                          items: items,
+                          needsFullDiskAccess: blocked)
     }
 
     // MARK: - Gộp trình duyệt

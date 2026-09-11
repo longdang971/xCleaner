@@ -53,7 +53,7 @@ struct RootView: View {
     private var content: some View {
         ZStack {
             switch state.module {
-            case .smartScan, .systemJunk, .trashDownloads, .privacy:
+            case .smartScan:
                 GroupedModuleView(store: state.scanStore(for: state.module), module: state.module)
             case .uninstaller:
                 UninstallerView(store: state.uninstall)

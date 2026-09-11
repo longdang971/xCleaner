@@ -9,10 +9,10 @@ struct SystemJunkScanner: ModuleScanner {
     var stages: [ScanStage] {
         [.init(id: "user-cache", title: "Bộ nhớ đệm ứng dụng", icon: "shippingbox.fill"),
          .init(id: "sys-cache", title: "Bộ nhớ đệm hệ thống", icon: "lock.shield.fill"),
+         .init(id: "dev-junk", title: "Công cụ lập trình", icon: "hammer.fill"),
          .init(id: "user-logs", title: "Nhật ký người dùng", icon: "doc.text.fill"),
          .init(id: "sys-logs", title: "Nhật ký hệ thống", icon: "server.rack"),
          .init(id: "crash", title: "Báo cáo sự cố", icon: "exclamationmark.triangle.fill"),
-         .init(id: "dev-junk", title: "Công cụ lập trình", icon: "hammer.fill"),
          .init(id: "misc", title: "Trạng thái cửa sổ", icon: "macwindow")]
     }
 
@@ -67,76 +67,8 @@ struct SystemJunkScanner: ModuleScanner {
         stage.finish(1, bytes: systemCache.reduce(0) { $0 + $1.size })
         if cancel.isCancelled { return groups }
 
-        // 3. Nhật ký người dùng
-        report(2, steps, "Nhật ký người dùng…")
-        var userLogs = itemsFromChildren(of: FileUtils.homePath("Library/Logs"), cancel: cancel,
-                                         found: { stage.found($0, $1) })
-        userLogs.append(contentsOf: [
-            FileUtils.homePath("Library/Application Support/CrashReporter")
-        ].compactMap { makeItem($0, name: "CrashReporter", cancel: cancel) })
-        found += userLogs.reduce(0) { $0 + $1.size }
-        if !userLogs.isEmpty {
-            groups.append(CleanGroup(id: "user-logs", title: "Nhật ký người dùng",
-                                     subtitle: "Log do ứng dụng ghi ra trong lúc chạy",
-                                     icon: "doc.text.fill", safety: .safe, items: userLogs))
-        }
-        stage.finish(2, bytes: userLogs.reduce(0) { $0 + $1.size })
-        if cancel.isCancelled { return groups }
-
-        // 4. Nhật ký hệ thống (cần quyền quản trị)
-        report(3, steps, "Nhật ký hệ thống…")
-        var sysLogs = itemsFromChildren(of: URL(fileURLWithPath: "/Library/Logs"), cancel: cancel,
-                                        found: { stage.found($0, $1) })
-        // Trong /var/log chỉ đụng tới log đã xoay vòng, tuyệt đối không xoá log đang mở.
-        for f in FileUtils.children(of: URL(fileURLWithPath: "/private/var/log")) {
-            if cancel.isCancelled { break }
-            let n = f.lastPathComponent
-            let isRotated = n.hasSuffix(".gz") || n.hasSuffix(".bz2") || n.hasSuffix(".old")
-                || n.range(of: #"\.\d+$"#, options: .regularExpression) != nil
-            guard isRotated else { continue }
-            if let i = makeItem(f, detail: "Nhật ký đã xoay vòng", cancel: cancel) { sysLogs.append(i) }
-        }
-        if let asl = makeItem(URL(fileURLWithPath: "/private/var/log/asl"),
-                              name: "asl", detail: "Nhật ký hệ thống cũ",
-                              emptyContentsOnly: true, cancel: cancel) {
-            sysLogs.append(asl)
-        }
-        sysLogs.sort { $0.size > $1.size }
-        found += sysLogs.reduce(0) { $0 + $1.size }
-        if !sysLogs.isEmpty {
-            groups.append(CleanGroup(id: "sys-logs", title: "Nhật ký hệ thống",
-                                     subtitle: "Log của macOS — cần mật khẩu quản trị",
-                                     icon: "server.rack", safety: .safe, items: sysLogs))
-        }
-        stage.finish(3, bytes: sysLogs.reduce(0) { $0 + $1.size })
-        if cancel.isCancelled { return groups }
-
-        // 5. Báo cáo sự cố
-        report(4, steps, "Báo cáo sự cố…")
-        var crash: [CleanItem] = []
-        for dir in [FileUtils.homePath("Library/Logs/DiagnosticReports"),
-                    URL(fileURLWithPath: "/Library/Logs/DiagnosticReports")] {
-            for f in FileUtils.children(of: dir) where !f.lastPathComponent.hasPrefix(".") {
-                if cancel.isCancelled { break }
-                if let i = makeItem(f, detail: Fmt.relativeAge(FileUtils.modificationDate(of: f)),
-                                    cancel: cancel) {
-                    stage.found(i.name, i.size)
-                    crash.append(i)
-                }
-            }
-        }
-        crash.sort { $0.size > $1.size }
-        found += crash.reduce(0) { $0 + $1.size }
-        if !crash.isEmpty {
-            groups.append(CleanGroup(id: "crash", title: "Báo cáo sự cố",
-                                     subtitle: "Biên bản khi app hoặc hệ thống gặp lỗi",
-                                     icon: "exclamationmark.triangle.fill", safety: .safe, items: crash))
-        }
-        stage.finish(4, bytes: crash.reduce(0) { $0 + $1.size })
-        if cancel.isCancelled { return groups }
-
-        // 6. Rác của công cụ lập trình
-        report(5, steps, "Công cụ lập trình…")
+        // 3. Rác của công cụ lập trình
+        report(2, steps, "Công cụ lập trình…")
         var dev: [CleanItem] = []
         let devTargets: [(URL, String, String, Bool)] = [
             (FileUtils.homePath("Library/Developer/Xcode/DerivedData"), "Xcode DerivedData",
@@ -161,7 +93,7 @@ struct SystemJunkScanner: ModuleScanner {
         ]
         for (url, name, detail, selected) in devTargets {
             if cancel.isCancelled { break }
-            report(5, steps, "Công cụ lập trình: \(name)")
+            report(2, steps, "Công cụ lập trình: \(name)")
             if let i = makeItem(url, name: name, detail: detail, selected: selected, cancel: cancel) {
                 dev.append(i)
             }
@@ -173,7 +105,75 @@ struct SystemJunkScanner: ModuleScanner {
                                      subtitle: "Xoá xong lần build kế tiếp sẽ lâu hơn một chút",
                                      icon: "hammer.fill", safety: .review, items: dev))
         }
-        stage.finish(5, bytes: dev.reduce(0) { $0 + $1.size })
+        stage.finish(2, bytes: dev.reduce(0) { $0 + $1.size })
+        if cancel.isCancelled { return groups }
+
+        // 4. Nhật ký người dùng
+        report(3, steps, "Nhật ký người dùng…")
+        var userLogs = itemsFromChildren(of: FileUtils.homePath("Library/Logs"), cancel: cancel,
+                                         found: { stage.found($0, $1) })
+        userLogs.append(contentsOf: [
+            FileUtils.homePath("Library/Application Support/CrashReporter")
+        ].compactMap { makeItem($0, name: "CrashReporter", cancel: cancel) })
+        found += userLogs.reduce(0) { $0 + $1.size }
+        if !userLogs.isEmpty {
+            groups.append(CleanGroup(id: "user-logs", title: "Nhật ký người dùng",
+                                     subtitle: "Log do ứng dụng ghi ra trong lúc chạy",
+                                     icon: "doc.text.fill", safety: .safe, items: userLogs))
+        }
+        stage.finish(3, bytes: userLogs.reduce(0) { $0 + $1.size })
+        if cancel.isCancelled { return groups }
+
+        // 5. Nhật ký hệ thống (cần quyền quản trị)
+        report(4, steps, "Nhật ký hệ thống…")
+        var sysLogs = itemsFromChildren(of: URL(fileURLWithPath: "/Library/Logs"), cancel: cancel,
+                                        found: { stage.found($0, $1) })
+        // Trong /var/log chỉ đụng tới log đã xoay vòng, tuyệt đối không xoá log đang mở.
+        for f in FileUtils.children(of: URL(fileURLWithPath: "/private/var/log")) {
+            if cancel.isCancelled { break }
+            let n = f.lastPathComponent
+            let isRotated = n.hasSuffix(".gz") || n.hasSuffix(".bz2") || n.hasSuffix(".old")
+                || n.range(of: #"\.\d+$"#, options: .regularExpression) != nil
+            guard isRotated else { continue }
+            if let i = makeItem(f, detail: "Nhật ký đã xoay vòng", cancel: cancel) { sysLogs.append(i) }
+        }
+        if let asl = makeItem(URL(fileURLWithPath: "/private/var/log/asl"),
+                              name: "asl", detail: "Nhật ký hệ thống cũ",
+                              emptyContentsOnly: true, cancel: cancel) {
+            sysLogs.append(asl)
+        }
+        sysLogs.sort { $0.size > $1.size }
+        found += sysLogs.reduce(0) { $0 + $1.size }
+        if !sysLogs.isEmpty {
+            groups.append(CleanGroup(id: "sys-logs", title: "Nhật ký hệ thống",
+                                     subtitle: "Log của macOS — cần mật khẩu quản trị",
+                                     icon: "server.rack", safety: .safe, items: sysLogs))
+        }
+        stage.finish(4, bytes: sysLogs.reduce(0) { $0 + $1.size })
+        if cancel.isCancelled { return groups }
+
+        // 6. Báo cáo sự cố
+        report(5, steps, "Báo cáo sự cố…")
+        var crash: [CleanItem] = []
+        for dir in [FileUtils.homePath("Library/Logs/DiagnosticReports"),
+                    URL(fileURLWithPath: "/Library/Logs/DiagnosticReports")] {
+            for f in FileUtils.children(of: dir) where !f.lastPathComponent.hasPrefix(".") {
+                if cancel.isCancelled { break }
+                if let i = makeItem(f, detail: Fmt.relativeAge(FileUtils.modificationDate(of: f)),
+                                    cancel: cancel) {
+                    stage.found(i.name, i.size)
+                    crash.append(i)
+                }
+            }
+        }
+        crash.sort { $0.size > $1.size }
+        found += crash.reduce(0) { $0 + $1.size }
+        if !crash.isEmpty {
+            groups.append(CleanGroup(id: "crash", title: "Báo cáo sự cố",
+                                     subtitle: "Biên bản khi app hoặc hệ thống gặp lỗi",
+                                     icon: "exclamationmark.triangle.fill", safety: .safe, items: crash))
+        }
+        stage.finish(5, bytes: crash.reduce(0) { $0 + $1.size })
         if cancel.isCancelled { return groups }
 
         // 7. Trạng thái ứng dụng đã lưu + gói cài đặt cũ

@@ -16,7 +16,7 @@ struct SidebarView: View {
 
     private var width: CGFloat { expanded ? Metrics.sidebarExpanded : Metrics.sidebarWidth }
 
-    private let cleaning: [CleanModule] = [.smartScan, .systemJunk, .trashDownloads, .privacy]
+    private let cleaning: [CleanModule] = [.smartScan]
     private let tools: [CleanModule] = [.uninstaller, .largeOld, .duplicates]
 
     var body: some View {

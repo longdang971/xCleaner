@@ -178,15 +178,8 @@ final class ScanStore: ObservableObject {
         statusText = "Đang dừng…"
     }
 
-    private func makeScanner() -> ModuleScanner {
-        switch module {
-        case .smartScan:      return SmartScanScanner()
-        case .systemJunk:     return SystemJunkScanner()
-        case .privacy:        return BrowserPrivacyScanner()
-        case .trashDownloads: return TrashDownloadsScanner(oldDownloadDays: settings.oldDownloadDays)
-        default:              return SystemJunkScanner()
-        }
-    }
+    /// Chỉ còn Quét thông minh dùng màn hình dạng nhóm; nó tự gọi các bộ quét con bên trong.
+    private func makeScanner() -> ModuleScanner { SmartScanScanner() }
 
     // MARK: Chọn
 

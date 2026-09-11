@@ -52,21 +52,6 @@ struct ModuleSkin {
                          glow: Color(hex: "#F472B6"),
                          gem: [Color(hex: "#F9A8D4"), Color(hex: "#DB2777"), Color(hex: "#5C0B44")],
                          action: ModuleSkin.appAccent)
-        case .systemJunk:
-            return .init(deep: Color(hex: "#042616"), mid: Color(hex: "#12874C"),
-                         glow: Color(hex: "#34D399"),
-                         gem: [Color(hex: "#6EE7B7"), Color(hex: "#10B981"), Color(hex: "#05402A")],
-                         action: ModuleSkin.appAccent)
-        case .trashDownloads:
-            return .init(deep: Color(hex: "#07173F"), mid: Color(hex: "#2563C9"),
-                         glow: Color(hex: "#60A5FA"),
-                         gem: [Color(hex: "#93C5FD"), Color(hex: "#3B82F6"), Color(hex: "#132B6B")],
-                         action: ModuleSkin.appAccent)
-        case .privacy:
-            return .init(deep: Color(hex: "#1B0B45"), mid: Color(hex: "#6C2BD9"),
-                         glow: Color(hex: "#A855F7"),
-                         gem: [Color(hex: "#C084FC"), Color(hex: "#7C3AED"), Color(hex: "#3B0F80")],
-                         action: ModuleSkin.appAccent)
         case .uninstaller:
             return .init(deep: Color(hex: "#0C1440"), mid: Color(hex: "#3B4FD8"),
                          glow: Color(hex: "#818CF8"),
