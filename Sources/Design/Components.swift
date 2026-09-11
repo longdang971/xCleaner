@@ -949,7 +949,7 @@ struct AppDialog<Content: View>: View {
         ZStack {
             // `Color` mới giãn hết mọi hướng; `Rectangle` bị ZStack ép về đúng kích thước
             // hộp thoại nên phần còn lại của màn hình vẫn sáng nguyên.
-            Color.black.opacity(0.55)
+            Color.black.opacity(0.7)
                 .ignoresSafeArea()
                 .onTapGesture(perform: onSecondary)
 
@@ -986,13 +986,15 @@ struct AppDialog<Content: View>: View {
             }
             .padding(26)
             .frame(width: 420)
+            // Gần như đục: hộp thoại trong suốt thì chữ phía sau lẫn vào chữ trong hộp,
+            // đọc rất mệt.
             .background(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.black.opacity(0.55))
+                    .fill(Color(hex: "#1B1026").opacity(0.97))
                     .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color.white.opacity(0.10)))
+                        .fill(Color.white.opacity(0.06)))
                     .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
+                        .strokeBorder(Color.white.opacity(0.26), lineWidth: 1))
             )
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .shadow(color: .black.opacity(0.45), radius: 34, y: 14)
