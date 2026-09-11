@@ -24,6 +24,9 @@ struct DuplicatesView: View {
                 HeroHeadline(title: "Có thể lấy lại \(Fmt.size(store.reclaimable))",
                              subtitle: "\(store.sets.count) nhóm trùng lặp · mỗi nhóm luôn giữ lại ít nhất một bản") {
                     HStack(spacing: 8) {
+                        PillButton(title: "Quay lại", systemImage: "chevron.left") {
+                            store.backToStart()
+                        }
                         PillButton(title: "Chọn tự động", systemImage: "wand.and.stars") {
                             withAnimation(Motion.snappy) { store.autoSelect() }
                         }

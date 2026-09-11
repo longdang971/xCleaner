@@ -81,6 +81,7 @@ struct LargeOldView: View {
 
     private var toolbar: some View {
         HStack(spacing: 10) {
+            PillButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
             ForEach(LargeOldStore.Filter.allCases) { f in
                 FilterChip(title: f.rawValue, isOn: store.filter == f) {
                     withAnimation(Motion.snappy) { store.filter = f }

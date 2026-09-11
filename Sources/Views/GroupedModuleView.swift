@@ -188,6 +188,11 @@ struct GroupedModuleView: View {
         .overlay(alignment: .bottom) {
             if !store.groups.isEmpty { cleanButton }
         }
+        .overlay(alignment: .topLeading) {
+            PillButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
+                .padding(.leading, Metrics.contentPadding)
+                .padding(.top, 6)
+        }
         .overlay(alignment: .topTrailing) {
             if !store.groups.isEmpty {
                 IconToolbar(actions: [

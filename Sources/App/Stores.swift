@@ -242,6 +242,20 @@ final class ScanStore: ObservableObject {
         }
     }
 
+    /// Bỏ kết quả và quay về màn khởi đầu, như chưa từng quét.
+    func backToStart() {
+        cancelToken.cancel()
+        withAnimation(Motion.standard) {
+            groups = []
+            outcome = nil
+            restoredCount = 0
+            progress = 0
+            liveBytes = 0
+            statusText = ""
+            phase = .idle
+        }
+    }
+
     func reset() {
         phase = groups.isEmpty ? .idle : .results
         outcome = nil
@@ -453,6 +467,17 @@ final class LargeOldStore: ObservableObject {
 
     func cancel() { cancelToken.cancel() }
 
+    func backToStart() {
+        cancelToken.cancel()
+        withAnimation(Motion.standard) {
+            files = []
+            selected = []
+            outcome = nil
+            progress = 0
+            statusText = ""
+        }
+    }
+
     func toggle(_ url: URL) {
         if selected.contains(url) { selected.remove(url) } else { selected.insert(url) }
     }
@@ -542,6 +567,17 @@ final class DuplicateStore: ObservableObject {
     }
 
     func cancel() { cancelToken.cancel() }
+
+    func backToStart() {
+        cancelToken.cancel()
+        withAnimation(Motion.standard) {
+            sets = []
+            selected = []
+            outcome = nil
+            progress = 0
+            statusText = ""
+        }
+    }
 
     /// Giữ lại bản nằm ở đường dẫn ngắn nhất, chọn các bản còn lại.
     func autoSelect() {
