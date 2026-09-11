@@ -302,7 +302,7 @@ struct GroupTile: View {
             HStack(spacing: 8) {
                 TriStateBox(state: group.selection, action: onToggle)
                 Text(group.title)
-                    .font(.system(size: 30, weight: .bold))
+                    .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)

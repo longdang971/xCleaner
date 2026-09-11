@@ -31,7 +31,7 @@ struct ProgressTile: View {
             HStack(spacing: 8) {
                 statusMark
                 Text(stage.title)
-                    .font(.system(size: 30, weight: .bold))
+                    .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)
