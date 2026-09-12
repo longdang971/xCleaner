@@ -443,6 +443,7 @@ struct CheckBox: View {
 struct DiskUsageRing: View {
     @State private var total: Int64 = 0
     @State private var free: Int64 = 0
+    @ObservedObject private var ledger = CleanLedger.shared
     var expanded: Bool
 
     private var used: Int64 { max(0, total - free) }
@@ -462,10 +463,12 @@ struct DiskUsageRing: View {
 
             if expanded {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("\(Fmt.size(free)) trống")
+                    // Vòng tròn đã nói phần đã dùng chiếm bao nhiêu, nên dòng chữ nói đúng
+                    // hai con số đứng sau nó thay vì lặp lại phần trống.
+                    Text("\(Fmt.size(used)) / \(Fmt.size(total))")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Palette.textSecond)
-                    Text("trên \(Fmt.size(total))")
+                    Text(savedLine)
                         .font(.system(size: 10)).foregroundStyle(Palette.textFaint)
                 }
                 .fixedSize()
@@ -474,7 +477,14 @@ struct DiskUsageRing: View {
         }
         .onAppear(perform: refresh)
         .onReceive(Timer.publish(every: 20, on: .main, in: .common).autoconnect()) { _ in refresh() }
-        .help("\(Fmt.size(free)) trống trên \(Fmt.size(total))")
+        .help("Đã dùng \(Fmt.size(used)) trên \(Fmt.size(total)) · còn trống \(Fmt.size(free))\n\(savedLine)")
+    }
+
+    /// Chưa dọn lần nào thì nói thẳng thế, đừng bày ra "0 KB" — nhìn như app hỏng.
+    private var savedLine: String {
+        ledger.totalFreed > 0
+            ? "đã giải phóng \(Fmt.size(ledger.totalFreed))"
+            : "chưa dọn lần nào"
     }
 
     private func refresh() {
