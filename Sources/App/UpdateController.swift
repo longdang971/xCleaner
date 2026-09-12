@@ -33,7 +33,10 @@ final class UpdateController: ObservableObject {
 
     #if DEBUG
     /// Chỉ dùng để chạy thử toàn bộ đường tải-và-thay mà không phải bấm tay.
-    var autoInstallWhenAvailable = false
+    /// Đọc ngay lúc dựng: đặt muộn hơn (trong `onChange` của view) thì lần kiểm đầu tiên
+    /// đã chạy xong trước khi cờ kịp bật.
+    private(set) var autoInstallWhenAvailable =
+        ProcessInfo.processInfo.environment["XCLEANER_UPDATE"] == "install"
     #endif
 
     func check() {
@@ -46,6 +49,9 @@ final class UpdateController: ObservableObject {
                 self.lastChecked = Date()
                 self.phase = found.isNewerThanCurrent ? .available(tag: found.tag) : .upToDate
                 #if DEBUG
+                NSLog("[xCleaner] update: thấy %@, mới hơn=%d, tự cài=%d",
+                      found.tag, found.isNewerThanCurrent ? 1 : 0,
+                      self.autoInstallWhenAvailable ? 1 : 0)
                 if self.autoInstallWhenAvailable, found.isNewerThanCurrent {
                     self.downloadAndInstall()
                 }
@@ -62,17 +68,21 @@ final class UpdateController: ObservableObject {
         phase = .downloading(0)
         Task {
             do {
+                NSLog("[xCleaner] update: bắt đầu tải %@", release.archiveURL.absoluteString)
                 let archive = try await UpdateService.download(release) { fraction in
                     Task { @MainActor in
                         if case .downloading = self.phase { self.phase = .downloading(fraction) }
                     }
                 }
+                NSLog("[xCleaner] update: tải xong %@", archive.path)
                 self.phase = .readyToRestart
                 try UpdateService.install(archive: archive)
+                NSLog("[xCleaner] update: script thay thế đã chạy")
                 // Script thay thế đang chờ tiến trình này chết; nhường chỗ cho nó.
                 try? await Task.sleep(nanoseconds: 400_000_000)
                 NSApp.terminate(nil)
             } catch {
+                NSLog("[xCleaner] update: hỏng — %@", error.localizedDescription)
                 self.phase = .failed(error.localizedDescription)
             }
         }

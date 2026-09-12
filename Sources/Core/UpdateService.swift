@@ -136,6 +136,27 @@ enum UpdateService {
             publishedAt: published)
     }
 
+    /// Ghi chú phát hành viết bằng Markdown, còn ô mô tả trong app chỉ là chữ trơn —
+    /// không gỡ cú pháp thì người dùng đọc được cả dấu sao và dấu thăng.
+    static func plainText(_ markdown: String) -> String {
+        var lines: [String] = []
+        for raw in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
+            var line = String(raw)
+            // [chữ](đường dẫn) → chữ
+            line = line.replacingOccurrences(
+                of: #"\[([^\]]+)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
+            line = line.replacingOccurrences(of: #"[*_`]{1,3}"#, with: "", options: .regularExpression)
+            line = line.replacingOccurrences(of: #"^\s{0,3}#{1,6}\s*"#, with: "",
+                                             options: .regularExpression)
+            line = line.replacingOccurrences(of: #"^\s*[-*+]\s+"#, with: "• ",
+                                             options: .regularExpression)
+            lines.append(line.trimmingCharacters(in: .whitespaces))
+        }
+        return lines.joined(separator: "\n")
+            .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     // MARK: Tải về
 
     static func download(_ release: ReleaseInfo,

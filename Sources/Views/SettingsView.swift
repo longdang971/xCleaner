@@ -78,10 +78,6 @@ struct SettingsView: View {
             guard want else { return }
             app.requestUpdateCheck = false
             tab = .about
-            #if DEBUG
-            updates.autoInstallWhenAvailable =
-                ProcessInfo.processInfo.environment["XCLEANER_UPDATE"] == "install"
-            #endif
             updates.check()
         }
     }
@@ -239,8 +235,9 @@ private struct UpdateRow: View {
             guard let r = updates.release else { return "" }
             var s = "Bạn đang dùng \(updates.currentVersion)."
             if r.sizeBytes > 0 { s += " Gói tải về \(Fmt.size(r.sizeBytes))." }
-            if !r.notes.isEmpty {
-                s += "\n" + r.notes.split(separator: "\n").prefix(4).joined(separator: "\n")
+            let notes = UpdateService.plainText(r.notes)
+            if !notes.isEmpty {
+                s += "\n" + notes.split(separator: "\n").prefix(4).joined(separator: "\n")
             }
             return s
         case .downloading(let p):

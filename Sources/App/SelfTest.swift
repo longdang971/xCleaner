@@ -716,6 +716,11 @@ enum SelfTest {
         check("số lẻ ở cuối vẫn tính là mới hơn",
               SemanticVersion("1.0") < SemanticVersion("1.0.1"))
 
+        let plain = UpdateService.plainText("## Có gì mới\n- Thêm **Kiểm tra cập nhật…** vào menu\n- Xem [trang phát hành](https://example.com)")
+        check("gỡ được cú pháp Markdown khỏi ghi chú",
+              plain == "Có gì mới\n• Thêm Kiểm tra cập nhật… vào menu\n• Xem trang phát hành",
+              "nhận được: \(plain)")
+
         // Chốt an toàn: gói tải về phải tự nhận mình là xCleaner, nếu không thì dừng trước
         // khi có bất cứ thứ gì bị chép đè.
         let dir = makeSandbox()
