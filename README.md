@@ -3,6 +3,59 @@
 Ứng dụng dọn dẹp macOS viết bằng Swift + SwiftUI.
 Không sandbox, không gửi dữ liệu ra ngoài, và **không cần Apple Developer ID**.
 
+## Cài đặt
+
+Yêu cầu: macOS 14 (Sonoma) trở lên, máy Intel hoặc Apple Silicon.
+
+**1. Tải bản mới nhất**
+
+Vào [trang Releases](https://github.com/longdang971/xCleaner/releases/latest) và tải tệp
+`xCleaner-<phiên bản>.zip`.
+
+**2. Giải nén**
+
+Bấm đúp vào tệp `.zip` vừa tải. Finder sẽ tạo ra `xCleaner.app` ngay cạnh nó.
+
+**3. Kéo vào thư mục Ứng dụng**
+
+Kéo `xCleaner.app` vào thư mục **Applications** (Ứng dụng). Bước này không bắt buộc về mặt
+kỹ thuật, nhưng lệnh ở bước sau viết theo đường dẫn đó nên cứ để app nằm đúng chỗ cho gọn.
+
+**4. Gỡ cờ kiểm dịch của macOS**
+
+Mở **Terminal** (⌘ + Space, gõ `Terminal`, Enter) rồi dán đúng dòng này và nhấn Enter:
+
+```bash
+xattr -cr /Applications/xCleaner.app
+```
+
+Lệnh chạy xong không in ra gì cả — im lặng nghĩa là đã xong.
+
+**5. Mở xCleaner**
+
+Mở từ Launchpad hoặc thư mục Applications. Lần đầu macOS có thể hỏi xác nhận, chọn **Mở**.
+
+### Vì sao phải chạy lệnh ở bước 4?
+
+xCleaner ký **ad-hoc** — tức là không có chứng chỉ Apple Developer ID, vì thứ đó tốn 99 USD
+mỗi năm cho một app miễn phí không sandbox. Mọi tệp tải từ Internet đều bị macOS gắn thuộc
+tính `com.apple.quarantine`; gặp thuộc tính đó trên một app ký ad-hoc, Gatekeeper từ chối
+thẳng và báo **"xCleaner bị hỏng và không thể mở"** — app không hỏng, chỉ là không có chữ ký
+Apple công nhận. `xattr -cr` xoá các thuộc tính mở rộng đó (`-c` là xoá sạch, `-r` là làm cả
+những tệp bên trong gói app), nên sau đó app mở bình thường.
+
+Chỉ phải làm một lần cho mỗi bản tải về bằng trình duyệt. Khi cập nhật **từ trong app**
+(Cài đặt ▸ Giới thiệu) thì không cần làm gì: script thay thế app tự chạy đúng lệnh `xattr -cr`
+này lên bản mới trước khi mở lại.
+
+### Gỡ cài đặt
+
+Kéo `xCleaner.app` vào Thùng rác. Nếu muốn xoá sạch cả tuỳ chọn đã lưu:
+
+```bash
+defaults delete com.pikalong.xCleaner
+```
+
 ## Ngôn ngữ thiết kế
 
 Học theo CleanMyMac 5 nhưng dựng lại hoàn toàn bằng SwiftUI, không dùng tệp ảnh nào:
