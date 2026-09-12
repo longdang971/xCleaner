@@ -11,7 +11,13 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0.2"
     CURRENT_PROJECT_VERSION: "3"
-    CODE_SIGN_IDENTITY: "-"
+    # Ký bằng certificate tự ký thay vì ad-hoc ("-"). Ad-hoc lấy chính cdhash của bản build
+    # làm designated requirement, mà cdhash đổi theo từng lần build — nên macOS coi mỗi bản
+    # cập nhật là một app khác và xoá sạch quyền Toàn quyền truy cập đĩa đã cấp. Ký bằng cert
+    # thì requirement thành "bundle id này + cert này", cả hai đều không đổi, quyền sống qua
+    # mọi lần cập nhật. Cert nằm trong login keychain của máy build, hạn tới 2036; mất private
+    # key là mọi bản sau lại thành "app khác" và người dùng phải cấp quyền lại từ đầu.
+    CODE_SIGN_IDENTITY: "xPaste Local Signing"
     CODE_SIGN_STYLE: Manual
     CODE_SIGNING_REQUIRED: YES
     CODE_SIGNING_ALLOWED: YES
