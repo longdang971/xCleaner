@@ -31,6 +31,11 @@ final class UpdateController: ObservableObject {
         }
     }
 
+    #if DEBUG
+    /// Chỉ dùng để chạy thử toàn bộ đường tải-và-thay mà không phải bấm tay.
+    var autoInstallWhenAvailable = false
+    #endif
+
     func check() {
         guard !isBusy else { return }
         phase = .checking
@@ -40,6 +45,11 @@ final class UpdateController: ObservableObject {
                 self.release = found
                 self.lastChecked = Date()
                 self.phase = found.isNewerThanCurrent ? .available(tag: found.tag) : .upToDate
+                #if DEBUG
+                if self.autoInstallWhenAvailable, found.isNewerThanCurrent {
+                    self.downloadAndInstall()
+                }
+                #endif
             } catch {
                 self.release = nil
                 self.phase = .failed(error.localizedDescription)

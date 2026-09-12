@@ -61,6 +61,11 @@ struct RootView: View {
                let t = SettingsView.Tab(rawValue: raw) { settingsTab = t }
             withAnimation(Motion.standard) { state.showSettings = true }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .xcCheckUpdates)) { _ in
+            settingsTab = .about
+            state.requestUpdateCheck = true
+            withAnimation(Motion.standard) { state.showSettings = true }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .xcSelectModule)) { note in
             guard let raw = note.object as? String,
                   let m = CleanModule(rawValue: raw) else { return }

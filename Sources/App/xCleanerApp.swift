@@ -28,6 +28,9 @@ struct xCleanerApp: App {
                 .keyboardShortcut(",", modifiers: .command)
             }
             CommandGroup(after: .appInfo) {
+                Button("Kiểm tra cập nhật…") {
+                    NotificationCenter.default.post(name: .xcCheckUpdates, object: nil)
+                }
                 Button("Quét lại") {
                     NotificationCenter.default.post(name: .xcRescan, object: nil)
                 }
@@ -41,6 +44,7 @@ extension Notification.Name {
     static let xcRescan = Notification.Name("xCleaner.rescan")
     static let xcSelectModule = Notification.Name("xCleaner.selectModule")
     static let xcOpenSettings = Notification.Name("xCleaner.openSettings")
+    static let xcCheckUpdates = Notification.Name("xCleaner.checkUpdates")
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {

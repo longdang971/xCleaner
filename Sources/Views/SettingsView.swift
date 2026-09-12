@@ -9,6 +9,7 @@ import AppKit
 /// nền riêng, tiêu đề lớn, hàng chip lọc, rồi danh sách thẻ kính.
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var app: AppState
     @Binding var tab: Tab
     @StateObject private var updates = UpdateController()
 
@@ -69,7 +70,20 @@ struct SettingsView: View {
             .scrollIndicators(.never)
         }
         .animation(Motion.gentle, value: tab)
-        .onAppear { rememberedCount = SelectionMemory.shared.count }
+        .onAppear {
+            rememberedCount = SelectionMemory.shared.count
+            if app.requestUpdateCheck { app.requestUpdateCheck = false; updates.check() }
+        }
+        .onChange(of: app.requestUpdateCheck) { want in
+            guard want else { return }
+            app.requestUpdateCheck = false
+            tab = .about
+            #if DEBUG
+            updates.autoInstallWhenAvailable =
+                ProcessInfo.processInfo.environment["XCLEANER_UPDATE"] == "install"
+            #endif
+            updates.check()
+        }
     }
 
     // MARK: Chung

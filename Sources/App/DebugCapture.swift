@@ -64,6 +64,12 @@ enum DebugCapture {
             }
         }
 
+        if env["XCLEANER_UPDATE"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                NotificationCenter.default.post(name: .xcCheckUpdates, object: nil)
+            }
+        }
+
         if action == "scan" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 NotificationCenter.default.post(name: .xcRescan, object: nil)

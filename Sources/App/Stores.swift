@@ -1166,6 +1166,8 @@ final class DuplicateStore: ObservableObject {
 final class AppState: ObservableObject {
     @Published var module: CleanModule = .smartScan
     @Published var showSettings = false
+    /// Bấm "Kiểm tra cập nhật…" ở menu: mở trang Cài đặt rồi mới kiểm, vì đó là nơi bày kết quả.
+    @Published var requestUpdateCheck = false
     let settings = AppSettings()
 
     private var scanStores: [CleanModule: ScanStore] = [:]
