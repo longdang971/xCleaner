@@ -5,6 +5,10 @@ import AppKit
 ///
 /// Khác với các mục còn lại, ở đây hầu như không có gì để xoá — việc chính là **tắt**.
 /// Nên màn này không có nút tròn "Dọn" ở đáy; mỗi hàng tự mang công tắc của nó.
+///
+/// Cũng không có màn giới thiệu: đọc danh sách chỉ mất một nhịp và chẳng xoá gì cả, nên bắt
+/// người dùng bấm thêm một nút "Xem" chỉ để thấy đúng thứ họ vừa chọn ở sidebar là thừa —
+/// mục Gỡ ứng dụng cũng vào thẳng danh sách như vậy.
 struct StartupView: View {
     @ObservedObject var store: StartupStore
     @State private var confirmingRemoval: StartupScanner.Item?
@@ -13,18 +17,13 @@ struct StartupView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if store.items.isEmpty && !store.isLoading {
-                startScreen
-            } else if store.isLoading {
-                loadingScreen
-            } else {
-                header.padding(.bottom, 18)
-                toolbar
-                    .padding(.horizontal, Metrics.contentPadding)
-                    .padding(.bottom, 12)
-                list
-            }
+            header.padding(.bottom, 18)
+            toolbar
+                .padding(.horizontal, Metrics.contentPadding)
+                .padding(.bottom, 12)
+            list
         }
+        .onAppear { if store.items.isEmpty && !store.isLoading { store.load() } }
         .onReceive(NotificationCenter.default.publisher(for: .xcRescan)) { _ in store.load() }
         .confirmationDialog("Xoá mục khởi động “\(confirmingRemoval?.name ?? "")”?",
                             isPresented: Binding(get: { confirmingRemoval != nil },
@@ -40,57 +39,33 @@ struct StartupView: View {
         }
     }
 
-    // MARK: Màn khởi đầu
-
-    private var startScreen: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            ModuleIntro(title: CleanModule.startup.title,
-                        subtitle: "Bộ cập nhật, trình đồng bộ, helper — thứ các app cài thêm để tự chạy ngầm. Tắt bớt thì máy khởi động nhẹ hơn.",
-                        icon: CleanModule.startup.icon,
-                        gem: skin.gem,
-                        highlights: CleanModule.startup.highlights) {
-                ActionButton(title: "Mở mục Đăng nhập của macOS…",
-                             systemImage: "arrow.up.forward.app") {
-                    NSWorkspace.shared.open(URL(string:
-                        "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!)
-                }
-            }
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .bottom) {
-            CircleActionButton(title: "Xem", accent: skin.action) { store.load() }
-                .padding(.bottom, 22)
-        }
-    }
-
-    private var loadingScreen: some View {
-        VStack(spacing: 16) {
-            ScanRing(mode: .scanning(store.progress), bytes: 0,
-                     caption: store.statusText, diameter: 170, accent: skin.glow)
-            ActionButton(title: "Dừng", systemImage: "stop.fill") { store.cancel() }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     // MARK: Kết quả
 
     private var header: some View {
-        HeroHeadline(title: store.activeCount == 0
-                     ? "Không có gì của app tự chạy"
-                     : "\(store.activeCount) mục của ứng dụng đang tự chạy",
-                     subtitle: store.orphanCount > 0
-                     ? "\(store.orphanCount) mục trỏ tới chương trình không còn trên máy — xoá được"
-                     : "Mục của macOS được liệt kê để bạn biết, nhưng không tắt được") {
-            EmptyView()
+        HeroHeadline(title: headerTitle, subtitle: headerSubtitle) { EmptyView() }
+            .padding(.top, 6)
+    }
+
+    private var headerTitle: String {
+        if store.items.isEmpty { return CleanModule.startup.title }
+        return store.activeCount == 0
+            ? "Không có gì của app tự chạy"
+            : "\(store.activeCount) mục của ứng dụng đang tự chạy"
+    }
+
+    private var headerSubtitle: String {
+        if store.items.isEmpty {
+            return store.isLoading
+                ? "Đang đọc thứ các app cài thêm để tự chạy ngầm…"
+                : "Bộ cập nhật, trình đồng bộ, helper — thứ các app cài thêm để tự chạy ngầm."
         }
-        .padding(.top, 6)
+        return store.orphanCount > 0
+            ? "\(store.orphanCount) mục trỏ tới chương trình không còn trên máy — xoá được"
+            : "Mục của macOS được liệt kê để bạn biết, nhưng không tắt được"
     }
 
     private var toolbar: some View {
         HStack(spacing: 10) {
-            ActionButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
             ForEach(StartupStore.Filter.allCases) { f in
                 FilterChip(title: f.rawValue, isOn: store.filter == f) {
                     withAnimation(Motion.snappy) { store.filter = f }
@@ -98,13 +73,32 @@ struct StartupView: View {
             }
             Spacer()
             SearchField(placeholder: "Lọc theo tên", text: $store.search, width: 190)
-            ActionButton(title: "Đọc lại", systemImage: "arrow.clockwise") { store.load() }
+            IconToolbar(actions: [
+                .init(icon: "arrow.up.forward.app", help: "Mở mục Đăng nhập của macOS") {
+                    NSWorkspace.shared.open(URL(string:
+                        "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!)
+                },
+                .init(icon: "arrow.clockwise", help: "Đọc lại") { store.load() }
+            ])
         }
     }
 
     @ViewBuilder
     private var list: some View {
-        if store.visibleItems.isEmpty {
+        if store.items.isEmpty && store.isLoading {
+            // Không có màn quét riêng: đọc danh sách chỉ mất một nhịp, đổi nguyên trang chỉ
+            // để rồi đổi lại ngay thì màn hình nhấp nháy. Lần đọc lại sau vẫn giữ danh sách
+            // cũ trên màn hình cho tới khi có danh sách mới.
+            EmptyStateView(icon: "power",
+                           title: "Đang đọc danh sách",
+                           message: store.statusText.isEmpty ? "Một chút thôi." : store.statusText,
+                           gem: skin.gem)
+        } else if store.items.isEmpty {
+            EmptyStateView(icon: "power",
+                           title: "Chưa đọc danh sách",
+                           message: "Bấm nút đọc lại ở góc phải để xem thứ gì tự chạy khi bật máy.",
+                           gem: skin.gem)
+        } else if store.visibleItems.isEmpty {
             EmptyStateView(icon: "power",
                            title: "Không có mục nào",
                            message: "Thử đổi bộ lọc ở trên, hoặc bỏ chữ trong ô tìm kiếm.",

@@ -9,7 +9,6 @@ final class AppSettings: ObservableObject {
     @AppStorage("oldDownloadDays")  var oldDownloadDays: Int = 60
     @AppStorage("largeMinMB")       var largeMinMB: Int = 50
     @AppStorage("duplicateMinMB")   var duplicateMinMB: Int = 1
-    @AppStorage("confirmBeforeClean") var confirmBeforeClean: Bool = true
     @AppStorage("rememberChoices")   var rememberChoices: Bool = true
     @AppStorage("hasSeenWelcome")   var hasSeenWelcome: Bool = false
 }
@@ -512,6 +511,33 @@ final class ScanStore: ObservableObject {
             ?? PendingQuit(bundleID: "com.google.Chrome", name: "Google Chrome")
     }
 
+    /// Dựng thẳng màn "đã dọn xong" bằng dữ liệu giả — không quét, không xoá gì cả.
+    /// Cần khi xem lại bố cục màn này: đi đường thật phải chờ hết một lần quét.
+    func debugDemoDone(withFailures: Bool) {
+        let demo: [(String, String, Int64)] = [
+            ("Bộ nhớ đệm hệ thống", "internaldrive", 6_900_000_000),
+            ("Thùng rác", "trash", 3_100_000_000),
+            ("Tệp tải về cũ", "arrow.down.circle", 1_400_000_000),
+            ("Nhật ký & báo cáo sự cố", "doc.text", 620_000_000),
+            ("Dấu vết trình duyệt", "safari", 260_000_000)
+        ]
+        stages = demo.enumerated().map {
+            ScanStage(id: "demo\($0.offset)", title: $0.element.0, icon: $0.element.1)
+        }
+        stageBytes = Dictionary(uniqueKeysWithValues: demo.enumerated().map { ($0.offset, $0.element.2) })
+        let failures: [(url: URL, reason: String)] = withFailures
+            ? (1...9).map { (URL(fileURLWithPath: "/Library/Caches/com.demo.app/Cache_\($0).db"),
+                             "Tệp đang được một ứng dụng khác mở") }
+            : []
+        currentStage = nil
+        outcome = CleanOutcome(removedCount: 264, trashedCount: 0,
+                               freedBytes: demo.reduce(0) { $0 + $1.2 },
+                               failures: failures, wasCancelled: false, usedAdmin: true)
+        statusText = "Đã dọn xong"
+        smoother.complete()
+        phase = .done
+    }
+
     /// Dựng màn "đang dọn" bằng dữ liệu giả để xem giao diện — không xoá bất cứ thứ gì.
     func debugDemoClean() {
         let src = groups.filter { $0.items.contains(where: \.isSelected) }
@@ -546,6 +572,25 @@ final class ScanStore: ObservableObject {
                 self.smoother.report(f, ceiling: f)
             }
         }
+
+        // Chạy nốt sang màn "xong" để xem được cả hai màn trong một lần mở.
+        let freed = plan.reduce(Int64(0)) { $0 + $1.1.size }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22 * Double(plan.count) + 0.6) {
+            [weak self] in
+            guard let self, self.phase == .cleaning else { return }
+            for (i, _) in self.stages.enumerated() where self.stageBytes[i] == nil {
+                self.stageBytes[i] = acc[i] ?? 0
+            }
+            withAnimation(Motion.standard) {
+                self.outcome = CleanOutcome(removedCount: plan.count, trashedCount: 0,
+                                            freedBytes: freed, failures: [],
+                                            wasCancelled: false, usedAdmin: true)
+                self.phase = .done
+                self.smoother.complete()
+                self.currentStage = nil
+                self.statusText = "Đã dọn xong"
+            }
+        }
     }
     #endif
 
@@ -565,7 +610,6 @@ final class ScanStore: ObservableObject {
 final class StartupStore: ObservableObject {
     @Published var items: [StartupScanner.Item] = []
     @Published var isLoading = false
-    @Published var progress: Double = 0
     @Published var statusText = ""
     @Published var search = ""
     @Published var filter: Filter = .thirdParty
@@ -584,8 +628,9 @@ final class StartupStore: ObservableObject {
 
     private let settings: AppSettings
     private let cancelToken = CancelToken()
+    // Màn này không có vòng tiến trình — chỉ một dòng chữ — nên không cần bộ nội suy 60 khung
+    // mỗi giây; để nguyên thì cả trang dựng lại liên tục suốt lúc đọc mà chẳng ai thấy gì.
     private let throttle = ProgressThrottle()
-    private lazy var smoother = ProgressSmoother { [weak self] v in self?.progress = v }
 
     init(settings: AppSettings) { self.settings = settings }
 
@@ -613,7 +658,6 @@ final class StartupStore: ObservableObject {
         guard !isLoading else { return }
         isLoading = true
         cancelToken.reset()
-        smoother.reset()
         lastError = nil
         statusText = "Đang đọc danh sách…"
         let token = cancelToken
@@ -623,35 +667,17 @@ final class StartupStore: ObservableObject {
             let result = StartupScanner().scan(cancel: token) { p in
                 throttle.emit {
                     guard let self else { return }
-                    self.smoother.report(p.fraction, ceiling: p.ceiling)
                     self.statusText = p.message
                 }
             }
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.smoother.complete()
                 withAnimation(Motion.standard) {
                     self.items = result
                     self.isLoading = false
                     self.statusText = "\(result.count) mục"
                 }
             }
-        }
-    }
-
-    func cancel() {
-        cancelToken.cancel()
-        statusText = "Đang dừng…"
-    }
-
-    func backToStart() {
-        cancelToken.cancel()
-        smoother.reset()
-        withAnimation(Motion.standard) {
-            items = []
-            search = ""
-            statusText = ""
-            lastError = nil
         }
     }
 

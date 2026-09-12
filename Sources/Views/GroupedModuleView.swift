@@ -8,12 +8,8 @@ import AppKit
 struct GroupedModuleView: View {
     @ObservedObject var store: ScanStore
     let module: CleanModule
-    @EnvironmentObject private var settings: AppSettings
 
-    @State private var confirming = false
     @State private var reviewing: String?
-    /// Nhóm sẽ được dọn khi xác nhận; nil nghĩa là dọn tất cả những gì đang chọn.
-    @State private var cleanScope: String?
 
     private var skin: ModuleSkin { ModuleSkin.skin(for: module) }
 
@@ -61,9 +57,8 @@ struct GroupedModuleView: View {
                                     onToggleCategory: { store.toggleCategory(groupID: group.id, category: $0) },
                                     onQuitApp: { store.quitApp(groupID: group.id) },
                                     onClean: {
-                                        cleanScope = group.id
-                                        if settings.confirmBeforeClean { confirming = true }
-                                        else { store.clean(groupID: group.id) }
+                                        reviewing = nil
+                                        store.clean(groupID: group.id)
                                     })
                     .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
                                             removal: .opacity))
@@ -109,6 +104,13 @@ struct GroupedModuleView: View {
             reviewing = nil
             store.scan()
         }
+        .onAppear {
+            #if DEBUG
+            if let want = ProcessInfo.processInfo.environment["XCLEANER_DEMO_DONE"], want != "0" {
+                store.debugDemoDone(withFailures: want == "fail")
+            }
+            #endif
+        }
         .onChange(of: store.phase) { _ in
             #if DEBUG
             if ProcessInfo.processInfo.environment["XCLEANER_DEMO_CLEAN"] == "1",
@@ -126,39 +128,6 @@ struct GroupedModuleView: View {
             }
             #endif
         }
-        .confirmationDialog("Dọn \(Fmt.size(scopeSize))?",
-                            isPresented: $confirming, titleVisibility: .visible) {
-            Button("Dọn ngay", role: .destructive) {
-                let scope = cleanScope
-                reviewing = nil
-                store.clean(groupID: scope)
-            }
-            Button("Huỷ", role: .cancel) { }
-        } message: {
-            Text(confirmMessage)
-        }
-    }
-
-    /// Những mục sẽ bị xoá nếu xác nhận ngay bây giờ.
-    private var scopeItems: [CleanItem] {
-        if let id = cleanScope, let g = store.groups.first(where: { $0.id == id }) {
-            return g.items.filter(\.isSelected)
-        }
-        return store.selectedItems
-    }
-
-    private var scopeSize: Int64 { scopeItems.reduce(0) { $0 + $1.size } }
-
-    private var confirmMessage: String {
-        var s = "\(scopeItems.count) mục sẽ bị "
-        s += settings.moveToTrash ? "chuyển vào Thùng rác." : "xoá vĩnh viễn."
-        if scopeItems.contains(where: \.requiresAdmin) {
-            s += "\nMột số mục nằm trong thư mục hệ thống, macOS sẽ hỏi mật khẩu quản trị của bạn."
-        }
-        if scopeItems.contains(where: { $0.safety == .sensitive }) {
-            s += "\nTrong đó có dữ liệu tự động điền — xoá rồi không lấy lại được."
-        }
-        return s
     }
 
     // MARK: - Màn khởi đầu
@@ -304,8 +273,7 @@ struct GroupedModuleView: View {
     private var cleanButton: some View {
         CircleActionButton(title: "Dọn", accent: skin.action,
                            isEnabled: store.totalSelected > 0) {
-            cleanScope = nil
-            if settings.confirmBeforeClean { confirming = true } else { store.clean() }
+            store.clean()
         }
         .padding(.bottom, 22)
     }
@@ -682,71 +650,192 @@ struct ItemRow: View {
     }
 }
 
-// MARK: - Lớp phủ lúc dọn
+// MARK: - Màn hình dọn xong
 
+/// Cùng bố cục với màn đang quét và màn đang dọn — con số lớn ở trên, lưới thẻ ở giữa,
+/// một nút tròn ở đáy — để ba màn nối tiếp nhau trông như cùng một màn hình đổi nội dung
+/// chứ không phải ba trang rời rạc.
+///
+/// Lưới ở đây là chính những ô vừa chạy lúc dọn, nay đứng yên với số đã dọn của từng nhóm:
+/// người dùng thấy ngay phần nào đóng góp bao nhiêu vào con số tổng.
 struct DoneScreen: View {
     @ObservedObject var store: ScanStore
     let skin: ModuleSkin
 
+    @State private var showingFailures = false
+
     var body: some View {
         ZStack {
-            VStack(spacing: 20) {
-                if store.phase == .done, let o = store.outcome {
-                    GemView(symbol: o.wasCancelled && o.freedBytes == 0
-                            ? "exclamationmark" : "checkmark",
-                            colors: skin.gem, size: 116)
-
-                    VStack(spacing: 6) {
-                        Text(o.wasCancelled && o.freedBytes == 0
-                             ? "Đã huỷ"
-                             : "Đã giải phóng \(Fmt.size(o.freedBytes))")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text(summary(o))
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(Palette.textSecond)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: 460)
-                    }
-
-                    if !o.failures.isEmpty {
-                        failureList(o)
-                    }
-
-                    HStack(spacing: 10) {
-                        ActionButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
-                        ActionButton(title: "Xong", kind: .prominent) { store.reset() }
-                    }
-                } else {
-                    ScanRing(mode: store.ringMode, bytes: store.totalSelected,
-                             caption: store.statusText, diameter: 180, accent: skin.glow)
-                }
+            if let o = store.outcome {
+                content(o)
+            } else {
+                // Chỉ gặp khi phase nhảy sang .done trước lúc kết quả kịp về.
+                ScanRing(mode: store.ringMode, bytes: store.totalSelected,
+                         caption: store.statusText, diameter: 180, accent: skin.glow)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(40)
+        }
+        .overlay {
+            if showingFailures, let o = store.outcome {
+                failureSheet(o).zIndex(20)
+            }
+        }
+        .animation(Motion.standard, value: showingFailures)
+        .onAppear {
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["XCLEANER_DEMO_FAILURES"] == "1" {
+                showingFailures = true
+            }
+            #endif
         }
     }
 
-    private func failureList(_ o: CleanOutcome) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("\(o.failures.count) mục không xoá được")
-                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.warning)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(Array(o.failures.prefix(30).enumerated()), id: \.offset) { _, f in
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(FileUtils.prettyPath(f.url))
-                                .font(.system(size: 11, weight: .medium)).foregroundStyle(.white)
-                            Text(f.reason).font(.system(size: 10)).foregroundStyle(Palette.textFaint)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+    /// Huỷ giữa chừng mà chưa xoá được gì thì không có con số nào để khoe.
+    private func cancelledEmpty(_ o: CleanOutcome) -> Bool {
+        o.wasCancelled && o.freedBytes == 0
+    }
+
+    private func content(_ o: CleanOutcome) -> some View {
+        VStack(spacing: 0) {
+            header(o)
+                .padding(.top, 6)
+                .padding(.bottom, 22)
+
+            if store.stages.isEmpty {
+                EmptyStateView(icon: "checkmark.seal",
+                               title: "Đã dọn xong",
+                               message: "Không còn gì trong danh sách vừa rồi.",
+                               gem: skin.gem)
+            } else {
+                ProgressGrid(stages: store.stages,
+                             activeIndex: nil,
+                             stageBytes: store.stageBytes,
+                             detail: "",
+                             doneCaption: "đã dọn")
+                    .padding(.horizontal, Metrics.contentPadding)
+                    .padding(.bottom, 18)
+            }
+
+            CircleActionButton(title: "Xong", accent: skin.action) { store.backToStart() }
+                .padding(.bottom, 22)
+        }
+        .overlay(alignment: .topTrailing) {
+            IconToolbar(actions: [
+                .init(icon: "arrow.clockwise", help: "Quét lại") { store.scan() }
+            ])
+            .padding(.trailing, Metrics.contentPadding)
+            .padding(.top, 6)
+        }
+    }
+
+    // MARK: Đầu trang
+
+    /// Đúng một con số lớn như màn đang dọn, chỉ khác thì quá khứ: "đã giải phóng".
+    private func header(_ o: CleanOutcome) -> some View {
+        VStack(spacing: 8) {
+            if cancelledEmpty(o) {
+                Text("Đã huỷ")
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(.white)
+            } else {
+                let parts = Fmt.sizeParts(o.freedBytes)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(parts.value)
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                    Text(parts.unit)
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.82))
+                    Text("đã giải phóng")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.82))
+                        .padding(.leading, 2)
                 }
             }
-            .frame(maxHeight: 140)
+
+            HStack(spacing: 10) {
+                Text(summary(o))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Palette.textSecond)
+                    .multilineTextAlignment(.center)
+
+                if !o.failures.isEmpty {
+                    ActionButton(title: "\(o.failures.count) mục không xoá được",
+                                 systemImage: "exclamationmark.triangle.fill",
+                                 kind: .attention, height: 24) {
+                        showingFailures = true
+                    }
+                    .fixedSize()
+                }
+            }
+            .frame(maxWidth: 640)
         }
-        .padding(14)
-        .frame(width: 460)
-        .glass(radius: 14)
+    }
+
+    // MARK: Danh sách mục không xoá được
+
+    /// Để trong lớp phủ chứ không chen vào giữa màn hình: bình thường nó rỗng, mà khi có thì
+    /// cũng không nên đẩy con số tổng và lưới thẻ xuống.
+    private func failureSheet(_ o: CleanOutcome) -> some View {
+        ZStack {
+            Color.black.opacity(0.7)
+                .ignoresSafeArea()
+                .onTapGesture { showingFailures = false }
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Palette.warning)
+                    Text("\(o.failures.count) mục không xoá được")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 12)
+                    ActionButton(title: "Đóng", height: 26) { showingFailures = false }
+                }
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(o.failures.prefix(60).enumerated()), id: \.offset) { _, f in
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(FileUtils.prettyPath(f.url))
+                                    .font(.system(size: 11.5, weight: .medium))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1).truncationMode(.middle)
+                                Text(f.reason)
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(Palette.textFaint)
+                                    .lineLimit(2)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if o.failures.count > 60 {
+                            Text("… và \(o.failures.count - 60) mục nữa")
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(Palette.textFaint)
+                        }
+                    }
+                    .padding(.trailing, 4)
+                }
+                .scrollIndicators(.never)
+                .frame(maxHeight: 260)
+            }
+            .padding(22)
+            .frame(width: 480)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(hex: "#1B1026").opacity(0.97))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(Color.white.opacity(0.06)))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.26), lineWidth: 1))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .shadow(color: .black.opacity(0.45), radius: 34, y: 14)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(.opacity)
     }
 
     private func summary(_ o: CleanOutcome) -> String {
@@ -762,7 +851,6 @@ struct DoneScreen: View {
         } else if o.usedAdmin {
             parts.append("có dùng quyền quản trị")
         }
-        if !o.failures.isEmpty { parts.append("\(o.failures.count) mục bị bỏ qua") }
         return parts.joined(separator: " · ")
     }
 }
