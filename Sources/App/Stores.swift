@@ -465,6 +465,7 @@ final class ScanStore: ObservableObject {
                 if let last = self.currentStage, self.stageBytes[last] == nil {
                     self.stageBytes[last] = perStage[last] ?? 0
                 }
+                CleanLedger.shared.record(result.freedBytes)
                 withAnimation(Motion.standard) {
                     self.outcome = result
                     self.phase = .done
@@ -756,6 +757,7 @@ final class StartupStore: ObservableObject {
                 try? LaunchControl.setEnabled(false, label: item.label,
                                               plist: item.plist, domain: item.domain)
                 let outcome = Remover.perform(request, progress: { _, _ in })
+                DispatchQueue.main.async { CleanLedger.shared.record(outcome.freedBytes) }
                 removed = outcome.removedCount > 0
                 if !removed && !outcome.wasCancelled {
                     failure = outcome.failures.first?.reason ?? "Không xoá được tệp này."
@@ -926,6 +928,7 @@ final class UninstallStore: ObservableObject {
             let result = Remover.perform(request) { _, _ in }
             DispatchQueue.main.async {
                 guard let self else { return }
+                CleanLedger.shared.record(result.freedBytes)
                 withAnimation(Motion.standard) {
                     self.outcome = result
                     self.isRemoving = false
@@ -1053,6 +1056,7 @@ final class LargeOldStore: ObservableObject {
             let result = Remover.perform(request) { _, _ in }
             DispatchQueue.main.async {
                 guard let self else { return }
+                CleanLedger.shared.record(result.freedBytes)
                 withAnimation(Motion.standard) {
                     self.outcome = result
                     self.files.removeAll { !FileUtils.exists($0.url) }
@@ -1173,6 +1177,7 @@ final class DuplicateStore: ObservableObject {
             let result = Remover.perform(request) { _, _ in }
             DispatchQueue.main.async {
                 guard let self else { return }
+                CleanLedger.shared.record(result.freedBytes)
                 withAnimation(Motion.standard) {
                     self.outcome = result
                     self.selected = []
