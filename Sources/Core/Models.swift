@@ -331,6 +331,14 @@ enum Fmt {
         }
     }
 
+    /// Giờ phút theo định dạng của máy, ví dụ "14:05".
+    static func time(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        f.dateStyle = .none
+        return f.string(from: d)
+    }
+
     static func relativeAge(_ d: Date?) -> String {
         guard let d else { return "" }
         let days = Int(Date().timeIntervalSince(d) / 86_400)

@@ -10,6 +10,7 @@ import AppKit
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @Binding var tab: Tab
+    @StateObject private var updates = UpdateController()
 
     enum Tab: String, CaseIterable, Identifiable {
         case general, scanning, about
@@ -154,16 +155,20 @@ struct SettingsView: View {
                 Text("xCleaner")
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(Palette.text)
-                Text("Phiên bản \((Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "1.0")")
+                Text("Phiên bản \(updates.currentVersion)")
                     .font(.system(size: 12))
                     .foregroundStyle(Palette.textFaint)
+            }
+
+            SettingCard {
+                UpdateRow(updates: updates, accent: accent)
             }
 
             SettingCard {
                 VStack(alignment: .leading, spacing: 12) {
                     AboutPoint(icon: "wifi.slash",
                                title: "Không có gì rời khỏi máy",
-                               detail: "App không gửi bất cứ dữ liệu nào ra ngoài, cũng không có máy chủ nào để gửi tới.")
+                               detail: "App chỉ ra mạng đúng một lần: khi bạn bấm kiểm tra cập nhật. Không có máy chủ nào nhận dữ liệu của bạn.")
                     AboutPoint(icon: "checkmark.shield.fill",
                                title: "Mọi đường dẫn đều qua hàng rào kiểm tra",
                                detail: "Thư mục nhà, thư mục hệ thống và các mục thiết yếu được đối chiếu trước khi bất cứ thứ gì bị xoá.")
@@ -175,6 +180,84 @@ struct SettingsView: View {
             }
         }
         .padding(.top, 4)
+    }
+}
+
+/// Hàng "Kiểm tra cập nhật" trong tab Giới thiệu.
+///
+/// Một hàng duy nhất đổi vai theo trạng thái, thay vì mở thêm cửa sổ: app này vốn đã bỏ hộp
+/// thoại để mọi thứ nằm trong cùng một cửa sổ.
+private struct UpdateRow: View {
+    @ObservedObject var updates: UpdateController
+    var accent: Color
+
+    var body: some View {
+        SettingRow(title: title, detail: detail) {
+            trailing
+        }
+    }
+
+    private var title: String {
+        switch updates.phase {
+        case .idle:                return "Kiểm tra cập nhật"
+        case .checking:            return "Đang hỏi GitHub…"
+        case .upToDate:            return "Bạn đang dùng bản mới nhất"
+        case .available(let tag):  return "Đã có bản \(tag)"
+        case .downloading:         return "Đang tải bản mới…"
+        case .readyToRestart:      return "Sắp khởi động lại để cài"
+        case .failed:              return "Không kiểm tra được"
+        }
+    }
+
+    private var detail: String {
+        switch updates.phase {
+        case .idle:
+            return "Bản mới được tải thẳng từ trang phát hành của kho mã, không qua máy chủ nào khác."
+        case .checking:
+            return "Đang xem trang phát hành mới nhất."
+        case .upToDate:
+            var s = "Phiên bản \(updates.currentVersion) là bản mới nhất đang có."
+            if let at = updates.lastChecked {
+                s += " Kiểm lúc \(Fmt.time(at))."
+            }
+            return s
+        case .available:
+            guard let r = updates.release else { return "" }
+            var s = "Bạn đang dùng \(updates.currentVersion)."
+            if r.sizeBytes > 0 { s += " Gói tải về \(Fmt.size(r.sizeBytes))." }
+            if !r.notes.isEmpty {
+                s += "\n" + r.notes.split(separator: "\n").prefix(4).joined(separator: "\n")
+            }
+            return s
+        case .downloading(let p):
+            return "Đã tải \(Int(p * 100))%."
+        case .readyToRestart:
+            return "xCleaner sẽ tự đóng rồi mở lại ở bản mới."
+        case .failed(let message):
+            return message
+        }
+    }
+
+    @ViewBuilder
+    private var trailing: some View {
+        switch updates.phase {
+        case .checking, .downloading:
+            ProgressView().controlSize(.small).tint(.white)
+        case .available:
+            HStack(spacing: 8) {
+                ActionButton(title: "Xem trang phát hành", systemImage: "arrow.up.forward.app") {
+                    updates.openReleasesPage()
+                }
+                ActionButton(title: "Cài bản mới", systemImage: "arrow.down.circle",
+                             kind: .prominent, accent: accent) {
+                    updates.downloadAndInstall()
+                }
+            }
+        case .readyToRestart:
+            EmptyView()
+        default:
+            ActionButton(title: "Kiểm tra", systemImage: "arrow.clockwise") { updates.check() }
+        }
     }
 }
 

@@ -29,6 +29,7 @@ enum SelfTest {
         testNestedPackageSize()
         testHardLinkDuplicates()
         testTrashKeepsFolder()
+        testUpdater()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
     }
@@ -699,6 +700,46 @@ enum SelfTest {
         // nên hỏi chính kết quả: mục này đi vào Thùng rác hay bị xoá thẳng.
         check("tệp đi vào Thùng rác chứ không bị xoá thẳng", outcome.trashedCount == 1,
               "trashedCount = \(outcome.trashedCount)")
+
+        try? fm.removeItem(at: dir)
+    }
+
+    private static func testUpdater() {
+        print("[Update] kiểm tra cập nhật")
+        let fm = FileManager.default
+
+        check("1.2.10 mới hơn 1.2.9",
+              SemanticVersion("1.2.9") < SemanticVersion("1.2.10"))
+        check("bỏ được chữ v ở đầu thẻ", SemanticVersion("v2.0") == SemanticVersion("2.0.0"))
+        check("cùng phiên bản thì không phải bản mới",
+              !(SemanticVersion("1.0.0") < SemanticVersion("1.0")))
+        check("số lẻ ở cuối vẫn tính là mới hơn",
+              SemanticVersion("1.0") < SemanticVersion("1.0.1"))
+
+        // Chốt an toàn: gói tải về phải tự nhận mình là xCleaner, nếu không thì dừng trước
+        // khi có bất cứ thứ gì bị chép đè.
+        let dir = makeSandbox()
+        let fakeApp = dir.appendingPathComponent("Something.app/Contents")
+        try? fm.createDirectory(at: fakeApp, withIntermediateDirectories: true)
+        (["CFBundleIdentifier": "com.kegian.malware",
+          "CFBundleName": "Something"] as NSDictionary)
+            .write(to: fakeApp.appendingPathComponent("Info.plist"), atomically: true)
+
+        let zip = dir.appendingPathComponent("payload.zip")
+        let pack = Process()
+        pack.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        pack.arguments = ["-c", "-k", "--sequesterRsrc", "--keepParent",
+                          dir.appendingPathComponent("Something.app").path, zip.path]
+        try? pack.run()
+        pack.waitUntilExit()
+
+        var refused = false
+        do { try UpdateService.install(archive: zip) }
+        catch { refused = true }
+        check("từ chối gói không phải xCleaner", refused,
+              "gói lạ vẫn được cài đè lên app")
+        check("không tạo script thay thế khi đã từ chối",
+              !FileUtils.exists(dir.appendingPathComponent("swap.sh")))
 
         try? fm.removeItem(at: dir)
     }
