@@ -1,14 +1,15 @@
 import SwiftUI
 import AppKit
 
-/// Bảng tuỳ chọn nằm ngay trong cửa sổ chính.
+/// Cài đặt là một trang bình thường của app, không phải hộp thoại.
 ///
 /// Cảnh `Settings` của SwiftUI mở ra một cửa sổ hệ thống màu sáng, lạc hẳn với phần
-/// còn lại của app, nên xCleaner tự vẽ bảng này và phủ lên nội dung như một hộp thoại.
-struct SettingsPanel: View {
+/// còn lại của app. Bản trước thay nó bằng một tấm phủ lên nội dung, nhưng như vậy
+/// Cài đặt vẫn là "cửa sổ trong cửa sổ". Giờ nó dùng đúng bố cục của các mục quét:
+/// nền riêng, tiêu đề lớn, hàng chip lọc, rồi danh sách thẻ kính.
+struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @Binding var tab: Tab
-    var onClose: () -> Void
 
     enum Tab: String, CaseIterable, Identifiable {
         case general, scanning, about
@@ -20,111 +21,60 @@ struct SettingsPanel: View {
             case .about: return "Giới thiệu"
             }
         }
-        var icon: String {
+        var subtitle: String {
             switch self {
-            case .general: return "slider.horizontal.3"
-            case .scanning: return "magnifyingglass"
-            case .about: return "info.circle"
+            case .general:  return "Cách xCleaner xoá và những gì nó nhớ về lựa chọn của bạn"
+            case .scanning: return "Các mốc mà mỗi mục dùng khi đi tìm tệp"
+            case .about:    return "Phiên bản và nguyên tắc làm việc của app"
             }
         }
     }
 
     @State private var rememberedCount = 0
-    @Namespace private var tabPill
 
     private var accent: Color { ModuleSkin.appAccent }
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.7)
-                .ignoresSafeArea()
-                .onTapGesture(perform: onClose)
-
-            VStack(spacing: 0) {
-                header
-                Divider().overlay(Color.white.opacity(0.12))
-                ScrollView {
-                    Group {
-                        switch tab {
-                        case .general:  general
-                        case .scanning: scanning
-                        case .about:    about
+        VStack(spacing: 0) {
+            HeroHeadline(title: "Cài đặt", subtitle: tab.subtitle) {
+                HStack(spacing: 8) {
+                    ForEach(Tab.allCases) { t in
+                        FilterChip(title: t.title, isOn: tab == t) {
+                            withAnimation(Motion.snappy) { tab = t }
                         }
                     }
-                    .padding(22)
                 }
-                .scrollIndicators(.never)
             }
-            .frame(width: 560, height: 520)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color(hex: "#151A24").opacity(0.98))
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color.white.opacity(0.05)))
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .shadow(color: .black.opacity(0.5), radius: 40, y: 16)
+            .padding(.top, 6)
+            .padding(.bottom, 22)
+
+            ScrollView {
+                Group {
+                    switch tab {
+                    case .general:  general
+                    case .scanning: scanning
+                    case .about:    about
+                    }
+                }
+                // Cột hẹp hơn cửa sổ: một hàng công tắc kéo dài cả nghìn điểm thì
+                // cái công tắc trôi tít sang bên kia màn hình, chẳng còn dính gì với nhãn.
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, Metrics.contentPadding)
+                .padding(.bottom, 40)
+                .id(tab)
+                .transition(.opacity)
+            }
+            .scrollIndicators(.never)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .transition(.opacity)
+        .animation(Motion.gentle, value: tab)
         .onAppear { rememberedCount = SelectionMemory.shared.count }
-    }
-
-    // MARK: Đầu bảng
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            Text("Cài đặt")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Palette.text)
-
-            Spacer(minLength: 0)
-
-            // Ba thẻ dạng viên thuốc, viên sáng trượt sang mục được chọn.
-            HStack(spacing: 2) {
-                ForEach(Tab.allCases) { t in
-                    Button { withAnimation(Motion.snappy) { tab = t } } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: t.icon).font(.system(size: 10.5, weight: .semibold))
-                            Text(t.title).font(.system(size: 12, weight: .semibold))
-                        }
-                        .foregroundStyle(tab == t ? Palette.text : Palette.textFaint)
-                        .padding(.horizontal, 11)
-                        .frame(height: 26)
-                        .background {
-                            if tab == t {
-                                Capsule().fill(Color.white.opacity(0.16))
-                                    .matchedGeometryEffect(id: "tab", in: tabPill)
-                            }
-                        }
-                        .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(3)
-            .background(Capsule().fill(Color.black.opacity(0.24)))
-
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Palette.textSecond)
-                    .frame(width: 26, height: 26)
-                    .background(Circle().fill(Color.white.opacity(0.1)))
-            }
-            .buttonStyle(.plain)
-            .keyboardShortcut(.cancelAction)
-        }
-        .padding(.horizontal, 18)
-        .frame(height: 56)
     }
 
     // MARK: Chung
 
     private var general: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             SettingCard {
                 SettingToggle(
                     title: "Chuyển vào Thùng rác thay vì xoá vĩnh viễn",
@@ -147,7 +97,7 @@ struct SettingsPanel: View {
                            detail: rememberedCount == 0
                             ? "Chưa có lựa chọn nào khác với đề xuất mặc định."
                             : "Quên hết để mọi mục quay lại trạng thái xCleaner đề xuất.") {
-                    PillButton(title: "Quên hết", isEnabled: rememberedCount > 0) {
+                    ActionButton(title: "Quên hết", isEnabled: rememberedCount > 0) {
                         SelectionMemory.shared.forgetAll()
                         rememberedCount = 0
                     }
@@ -157,9 +107,10 @@ struct SettingsPanel: View {
             SettingCard {
                 SettingRow(title: "Toàn quyền truy cập đĩa",
                            detail: "Cấp quyền này để xCleaner đọc được Thùng rác, dữ liệu Safari, Mail và danh sách mở gần đây của các app. Sau khi cấp, thoát hẳn rồi mở lại app.") {
-                    PillButton(title: "Mở Cài đặt…", systemImage: "arrow.up.forward.app") {
-                        NSWorkspace.shared.open(URL(string:
-                            "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
+                    ActionButton(title: "Mở Cài đặt…", systemImage: "arrow.up.forward.app") {
+                        // Dùng chung một đường dẫn với các chỗ khác trong app: bảng Cài đặt
+                        // hệ thống đã đổi định danh ở macOS 13, chuỗi cũ mở ra trang khác.
+                        openFullDiskAccess()
                     }
                 }
             }
@@ -169,20 +120,18 @@ struct SettingsPanel: View {
     // MARK: Quét
 
     private var scanning: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             SettingCard {
                 SettingStepper(title: "Tệp tải về coi là cũ sau",
                                detail: "Tệp trong thư mục Tải về lâu hơn mốc này sẽ được đề nghị dọn.",
                                value: $settings.oldDownloadDays,
                                range: 7...365, step: 7, unit: "ngày", accent: accent)
-            }
-            SettingCard {
+                SettingDivider()
                 SettingStepper(title: "Tệp lớn tính từ",
                                detail: "Mục Tệp lớn & cũ bỏ qua mọi tệp nhỏ hơn mốc này.",
                                value: $settings.largeMinMB,
                                range: 10...2000, step: 10, unit: "MB", accent: accent)
-            }
-            SettingCard {
+                SettingDivider()
                 SettingStepper(title: "Bỏ qua tệp trùng nhỏ hơn",
                                detail: "Đặt mốc cao hơn thì quét trùng lặp nhanh hơn nhiều vì bớt được rất nhiều tệp vụn.",
                                value: $settings.duplicateMinMB,
@@ -194,55 +143,60 @@ struct SettingsPanel: View {
     // MARK: Giới thiệu
 
     private var about: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 18) {
+            // Cùng huy hiệu lớn như màn khởi đầu của mỗi mục, chỉ nhỏ hơn một nấc.
+            // Tô màu của Quét thông minh chứ không phải xám của trang: đây là chỗ duy nhất
+            // nói về chính app, nên nó mang màu nhận diện của app.
             HeroEmblem(icon: "wand.and.sparkles",
-                       gem: ModuleSkin.skin(for: .smartScan).gem,
-                       size: 92)
-                .padding(.top, 10)
+                       gem: ModuleSkin.skin(for: .smartScan).gem, size: 120)
 
-            Text("xCleaner")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(Palette.text)
+            VStack(spacing: 4) {
+                Text("xCleaner")
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(Palette.text)
+                Text("Phiên bản \((Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "1.0")")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.textFaint)
+            }
 
-            Text("Phiên bản \((Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "1.0")")
-                .font(.system(size: 12))
-                .foregroundStyle(Palette.textFaint)
-
-            Text("Ứng dụng không gửi bất cứ dữ liệu nào ra ngoài máy. Mọi thao tác xoá đều đi qua một hàng rào kiểm tra đường dẫn, và thư mục hệ thống chỉ bị đụng tới sau khi bạn nhập mật khẩu quản trị.")
-                .font(.system(size: 12))
-                .foregroundStyle(Palette.textSecond)
-                .multilineTextAlignment(.center)
-                .lineSpacing(3)
-                .padding(.horizontal, 22)
-                .padding(.top, 4)
-
-            Spacer(minLength: 0)
+            SettingCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    AboutPoint(icon: "wifi.slash",
+                               title: "Không có gì rời khỏi máy",
+                               detail: "App không gửi bất cứ dữ liệu nào ra ngoài, cũng không có máy chủ nào để gửi tới.")
+                    AboutPoint(icon: "checkmark.shield.fill",
+                               title: "Mọi đường dẫn đều qua hàng rào kiểm tra",
+                               detail: "Thư mục nhà, thư mục hệ thống và các mục thiết yếu được đối chiếu trước khi bất cứ thứ gì bị xoá.")
+                    AboutPoint(icon: "lock.fill",
+                               title: "Thư mục hệ thống cần mật khẩu",
+                               detail: "Phần nằm ngoài thư mục nhà chỉ bị đụng tới sau khi bạn nhập mật khẩu quản trị.")
+                }
+                .padding(16)
+            }
         }
-        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
     }
 }
 
-// MARK: - Mảnh ghép của bảng tuỳ chọn
+// MARK: - Mảnh ghép của trang Cài đặt
 
-/// Khối bo tròn gom vài hàng liên quan, cùng kiểu với thẻ kết quả nhưng nhạt hơn.
+/// Khối bo tròn gom vài hàng liên quan. Dùng đúng thẻ kính của các màn kết quả
+/// nên trang này nằm cùng một hệ với phần còn lại của app.
 private struct SettingCard<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(spacing: 0) { content }
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.05)))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .frame(maxWidth: .infinity)
+            .glass()
     }
 }
 
 private struct SettingDivider: View {
     var body: some View {
-        Rectangle().fill(Color.white.opacity(0.09))
+        Rectangle().fill(Color.white.opacity(0.12))
             .frame(height: 1)
-            .padding(.leading, 14)
+            .padding(.leading, 16)
     }
 }
 
@@ -253,14 +207,14 @@ private struct SettingRow<Trailing: View>: View {
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13.5, weight: .medium))
                     .foregroundStyle(Palette.text)
                 if let detail {
                     Text(detail)
-                        .font(.system(size: 11))
+                        .font(.system(size: 11.5))
                         .foregroundStyle(Palette.textFaint)
                         .lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -269,7 +223,7 @@ private struct SettingRow<Trailing: View>: View {
             Spacer(minLength: 0)
             trailing.padding(.top, 1)
         }
-        .padding(14)
+        .padding(16)
     }
 }
 
@@ -282,6 +236,35 @@ private struct SettingToggle: View {
     var body: some View {
         SettingRow(title: title, detail: detail) {
             AccentSwitch(isOn: $isOn, accent: accent)
+        }
+    }
+}
+
+/// Một điều cam kết ở tab Giới thiệu: ký hiệu nhỏ, tên, rồi một câu giải thích.
+private struct AboutPoint: View {
+    var icon: String
+    var title: String
+    var detail: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(Palette.text)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Color.white.opacity(0.12)))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Palette.text)
+                Text(detail)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Palette.textFaint)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
         }
     }
 }
@@ -338,9 +321,11 @@ private struct SettingStepper: View {
                 }
             }
             .padding(3)
-            .background(Capsule().fill(Color.black.opacity(0.24)))
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
-            .clipShape(Capsule())
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.black.opacity(0.24)))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
     }
 
@@ -350,7 +335,8 @@ private struct SettingStepper: View {
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(enabled ? Palette.text : Palette.textFaint.opacity(0.5))
                 .frame(width: 24, height: 24)
-                .background(Circle().fill(Color.white.opacity(enabled ? 0.13 : 0.05)))
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.white.opacity(enabled ? 0.16 : 0.05)))
         }
         .buttonStyle(.plain)
         .disabled(!enabled)

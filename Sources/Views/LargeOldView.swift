@@ -10,7 +10,9 @@ struct LargeOldView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if store.files.isEmpty && !store.isScanning {
+            if store.files.isEmpty && !store.isScanning && store.hasScanned {
+                emptyResult
+            } else if store.files.isEmpty && !store.isScanning {
                 startScreen
             } else {
                 toolbar
@@ -22,6 +24,7 @@ struct LargeOldView: View {
         .overlay(alignment: .bottom) {
             if !store.files.isEmpty && !store.isScanning { bottomBar }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .xcRescan)) { _ in store.scan() }
         .confirmationDialog("Chuyển \(store.selected.count) tệp vào Thùng rác?",
                             isPresented: $confirming, titleVisibility: .visible) {
             Button("Chuyển vào Thùng rác", role: .destructive) { store.remove() }
@@ -39,7 +42,7 @@ struct LargeOldView: View {
                         icon: CleanModule.largeOld.icon,
                         gem: skin.gem,
                         highlights: CleanModule.largeOld.highlights) {
-                PillButton(title: "Chọn thư mục khác…", systemImage: "folder") { pickRoot() }
+                ActionButton(title: "Chọn thư mục khác…", systemImage: "folder") { pickRoot() }
             }
             Spacer()
         }
@@ -50,13 +53,30 @@ struct LargeOldView: View {
         }
     }
 
+    /// Quét xong mà không có gì: phải nói ra, chứ ném người dùng về màn khởi đầu thì họ
+    /// tưởng cái nút không ăn.
+    private var emptyResult: some View {
+        VStack(spacing: 18) {
+            EmptyStateView(icon: "checkmark.seal",
+                           title: "Không có tệp nào lớn hơn \(settings.largeMinMB) MB",
+                           message: "Thử hạ mốc trong Cài đặt ▸ Quét, hoặc chọn thư mục khác để tìm.",
+                           gem: skin.gem)
+            HStack(spacing: 10) {
+                ActionButton(title: "Chọn thư mục…", systemImage: "folder") { pickRoot() }
+                ActionButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
+                ActionButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
+            }
+            .padding(.bottom, 30)
+        }
+    }
+
     @ViewBuilder
     private var body_: some View {
         if store.isScanning {
             VStack(spacing: 16) {
                 ScanRing(mode: .scanning(store.progress), bytes: 0,
                          caption: store.statusText, diameter: 170, accent: skin.glow)
-                PillButton(title: "Dừng", systemImage: "stop.fill") { store.cancel() }
+                ActionButton(title: "Dừng", systemImage: "stop.fill") { store.cancel() }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -85,7 +105,7 @@ struct LargeOldView: View {
 
     private var toolbar: some View {
         HStack(spacing: 10) {
-            PillButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
+            ActionButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
             ForEach(LargeOldStore.Filter.allCases) { f in
                 FilterChip(title: f.rawValue, isOn: store.filter == f) {
                     withAnimation(Motion.snappy) { store.filter = f }
@@ -93,8 +113,8 @@ struct LargeOldView: View {
             }
             Spacer()
             SearchField(placeholder: "Lọc theo tên", text: $store.search, width: 190)
-            PillButton(title: "Chọn thư mục…", systemImage: "folder") { pickRoot() }
-            PillButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
+            ActionButton(title: "Chọn thư mục…", systemImage: "folder") { pickRoot() }
+            ActionButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
         }
     }
 

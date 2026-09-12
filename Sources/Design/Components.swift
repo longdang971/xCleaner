@@ -257,7 +257,10 @@ struct CircleActionButton: View {
                             .trim(from: 0, to: max(0.004, min(1, progress)))
                             .stroke(Color.white, style: StrokeStyle(lineWidth: 4.5, lineCap: .round))
                             .rotationEffect(.degrees(-90))
-                            .animation(Motion.standard, value: progress)
+                            // Giá trị đã được nội suy sẵn 60 lần/giây, nên chỉ cần một lớp
+                            // làm phẳng thật ngắn. Lò xo 0,4 giây ở đây sẽ khởi động lại
+                            // liên tục và biến chuyển động đều thành ra giật.
+                            .animation(.linear(duration: 1.0 / 60.0), value: progress)
                     }
                     .frame(width: 86, height: 86)
                 }
@@ -281,43 +284,109 @@ struct CircleActionButton: View {
     }
 }
 
-struct PillButton: View {
-    enum Kind { case glass, solid, warning }
+/// Lún xuống một chút trong lúc ngón tay còn giữ — phản hồi kiểu nút AppKit.
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .brightness(configuration.isPressed ? -0.06 : 0)
+            .animation(.easeOut(duration: 0.09), value: configuration.isPressed)
+    }
+}
+
+/// Nút bấm dùng khắp app.
+///
+/// Bản đầu là viên thuốc tròn hẳn, nền một màu phẳng, chữ in đậm, và loại "chính" thì đảo
+/// sang nền trắng đặc chữ đen — đó là ngôn ngữ của nút kêu gọi bấm trên web. Nút của một app
+/// macOS trông như cái bezel: góc bo vừa phải, một lớp sáng rất nhạt hắt từ mép trên, viền
+/// mảnh như sợi tóc, bóng đổ đúng một điểm, chữ ở cỡ thường, và khi bấm thì lún xuống chứ
+/// không đổi hẳn màu.
+struct ActionButton: View {
+    enum Kind {
+        /// Việc phụ: mở thư mục, quét lại, quay lại.
+        case normal
+        /// Việc chính của màn hình — tô màu nhấn của app.
+        case prominent
+        /// Việc cần để ý: cấp quyền, thoát app đang mở.
+        case attention
+    }
 
     var title: String
-    var systemImage: String?
-    var kind: Kind = .glass
+    /// Ký hiệu đứng trước chữ — dùng khi nút nói về một việc.
+    var systemImage: String? = nil
+    /// Ký hiệu đứng sau chữ — dùng cho mũi tên "mở ra xem".
+    var trailingImage: String? = nil
+    var kind: Kind = .normal
     var isEnabled: Bool = true
+    /// Nút trong thanh công cụ cao 28; nút nằm trong thẻ nhỏ hơn một nấc.
+    var height: CGFloat = 28
+    var accent: Color = ModuleSkin.appAccent
     var action: () -> Void
 
     @State private var hovering = false
+
+    private var radius: CGFloat { 7 }
+    private var fontSize: CGFloat { height >= 28 ? 12 : 11.5 }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
                 if let systemImage {
-                    Image(systemName: systemImage).font(.system(size: 11, weight: .semibold))
+                    Image(systemName: systemImage)
+                        .font(.system(size: fontSize - 1.5, weight: .semibold))
                 }
-                Text(title).font(.system(size: 12, weight: .semibold))
+                Text(title).font(.system(size: fontSize, weight: .medium))
+                if let trailingImage {
+                    Image(systemName: trailingImage)
+                        .font(.system(size: fontSize - 2.5, weight: .semibold))
+                        .opacity(0.8)
+                }
             }
-            .foregroundStyle(kind == .solid ? Color.black.opacity(0.85) : Color.white)
-            .padding(.horizontal, 14)
-            .frame(height: 28)
+            .foregroundStyle(kind == .attention ? Color.black.opacity(0.82) : .white)
+            .padding(.horizontal, height >= 28 ? 12 : 10)
+            .frame(height: height)
             .background {
-                switch kind {
-                case .glass:
-                    Capsule().fill(Color.white.opacity(hovering ? 0.28 : 0.18))
-                case .solid:
-                    Capsule().fill(Color.white.opacity(hovering ? 1 : 0.92))
-                case .warning:
-                    Capsule().fill(Palette.warning.opacity(hovering ? 0.34 : 0.24))
+                ZStack {
+                    RoundedRectangle(cornerRadius: radius, style: .continuous).fill(fill)
+                    // Ánh sáng hắt vào mép trên: thứ làm một khối phẳng thành một cái nút.
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .fill(LinearGradient(colors: [.white.opacity(kind == .normal ? 0.16 : 0.30),
+                                                      .clear],
+                                             startPoint: .top, endPoint: .center))
                 }
             }
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(kind == .normal ? 0.28 : 0.42), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .shadow(color: kind == .prominent ? accent.opacity(0.45) : .black.opacity(0.24),
+                    radius: kind == .prominent ? 8 : 2.5, y: kind == .prominent ? 3 : 1)
             .opacity(isEnabled ? 1 : 0.4)
         }
-        .buttonStyle(.plain)
+        // Hiệu ứng lún khi bấm phải đi qua ButtonStyle. Chồng một `onLongPressGesture` lên
+        // Button là cách nhanh nhất để mất luôn cú bấm: hai bộ nhận cử chỉ tranh nhau.
+        .buttonStyle(PressableButtonStyle())
         .disabled(!isEnabled)
         .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
+    }
+
+    private var fill: LinearGradient {
+        let lit = hovering && isEnabled
+        switch kind {
+        case .normal:
+            return LinearGradient(colors: [.white.opacity(lit ? 0.30 : 0.20),
+                                           .white.opacity(lit ? 0.20 : 0.12)],
+                                  startPoint: .top, endPoint: .bottom)
+        case .prominent:
+            return LinearGradient(colors: [accent.opacity(lit ? 1 : 0.95),
+                                           accent.opacity(lit ? 0.9 : 0.82)],
+                                  startPoint: .top, endPoint: .bottom)
+        case .attention:
+            return LinearGradient(colors: [Palette.warning.opacity(lit ? 1 : 0.94),
+                                           Palette.warning.opacity(lit ? 0.88 : 0.80)],
+                                  startPoint: .top, endPoint: .bottom)
+        }
     }
 }
 
@@ -457,23 +526,42 @@ struct SearchField: View {
 
 // MARK: - Chip lọc
 
+/// Một ô của bộ lọc. Bật lên thì sáng hơn hẳn phần còn lại — như một ô của
+/// `NSSegmentedControl` — chứ không đảo sang nền trắng đặc chữ đen kiểu thẻ lọc trên web.
 struct FilterChip: View {
     let title: String
     let isOn: Bool
     let action: () -> Void
     @State private var hovering = false
 
+    private var radius: CGFloat { 7 }
+
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11.5, weight: isOn ? .semibold : .regular))
-                .foregroundStyle(isOn ? Color.black.opacity(0.85) : Color.white)
-                .padding(.horizontal, 14)
-                .frame(height: 30)
-                .background(Capsule().fill(isOn ? Color.white.opacity(0.92)
-                                                 : Color.white.opacity(hovering ? 0.2 : 0.13)))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(isOn ? 0 : 0.16), lineWidth: 1))
-                .clipShape(Capsule())
+                .font(.system(size: 12, weight: isOn ? .semibold : .regular))
+                .foregroundStyle(isOn ? .white : Color.white.opacity(0.82))
+                .padding(.horizontal, 13)
+                .frame(height: 28)
+                .background {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: radius, style: .continuous)
+                            .fill(LinearGradient(
+                                colors: isOn
+                                    ? [.white.opacity(hovering ? 0.52 : 0.46),
+                                       .white.opacity(hovering ? 0.38 : 0.32)]
+                                    : [.white.opacity(hovering ? 0.18 : 0.11),
+                                       .white.opacity(hovering ? 0.12 : 0.07)],
+                                startPoint: .top, endPoint: .bottom))
+                        RoundedRectangle(cornerRadius: radius, style: .continuous)
+                            .fill(LinearGradient(colors: [.white.opacity(isOn ? 0.22 : 0.10), .clear],
+                                                 startPoint: .top, endPoint: .center))
+                    }
+                }
+                .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(isOn ? 0.58 : 0.18), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .shadow(color: .black.opacity(isOn ? 0.22 : 0), radius: 2.5, y: 1)
         }
         .buttonStyle(.plain)
         .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
@@ -689,9 +777,13 @@ struct IconToolbar: View {
                 }
             }
         }
-        .background(Capsule().fill(Color.white.opacity(0.13)))
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
-        .clipShape(Capsule())
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .fill(LinearGradient(colors: [.white.opacity(0.20), .white.opacity(0.12)],
+                                 startPoint: .top, endPoint: .bottom)))
+        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .strokeBorder(Color.white.opacity(0.28), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .shadow(color: .black.opacity(0.24), radius: 2.5, y: 1)
     }
 }
 
@@ -941,9 +1033,12 @@ struct AppDialog<Content: View>: View {
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 38)
-                            .background(Capsule().fill(Color.white.opacity(0.16)))
-                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
-                            .clipShape(Capsule())
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0.13)],
+                                                     startPoint: .top, endPoint: .bottom)))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.26), lineWidth: 1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                     .buttonStyle(.plain)
 
@@ -953,10 +1048,13 @@ struct AppDialog<Content: View>: View {
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 38)
-                            .background(Capsule().fill(accent))
-                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.55), lineWidth: 1))
-                            .clipShape(Capsule())
-                            .shadow(color: accent.opacity(0.6), radius: 14, y: 4)
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(LinearGradient(colors: [accent, accent.opacity(0.86)],
+                                                     startPoint: .top, endPoint: .bottom)))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.45), lineWidth: 1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .shadow(color: accent.opacity(0.5), radius: 10, y: 3)
                     }
                     .buttonStyle(.plain)
                     .keyboardShortcut(.defaultAction)

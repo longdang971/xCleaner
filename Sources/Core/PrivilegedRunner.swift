@@ -64,16 +64,33 @@ enum PrivilegedRunner {
 
     /// Dọn sạch *nội dung* của các thư mục nhưng giữ lại chính thư mục đó
     /// (một số thư mục hệ thống sẽ không được tạo lại nếu bị xoá hẳn).
+    /// Việc liệt kê phải do **root** làm, không phải chúng ta.
+    ///
+    /// Bản đầu liệt kê nội dung bằng `FileManager` rồi mới đưa danh sách cho root xoá. Thư mục
+    /// nào chỉ root đọc được thì danh sách đó rỗng — app im lặng không xoá gì, rồi lại thấy
+    /// "thư mục rỗng" nên báo là đã dọn xong. Giao cả việc liệt kê lẫn việc xoá cho một lệnh
+    /// `find` chạy dưới quyền root thì không còn chỗ cho sự nhầm lẫn đó.
     @discardableResult
     static func emptyContents(of dirs: [URL], prompt: String) throws -> Report {
-        var children: [URL] = []
-        let fm = FileManager.default
-        for d in dirs where SafetyGuard.isValid(d) {
-            let items = (try? fm.contentsOfDirectory(at: d, includingPropertiesForKeys: nil,
-                                                     options: [])) ?? []
-            children.append(contentsOf: items)
+        let (accepted, rejected) = SafetyGuard.partition(dirs)
+        for (url, reason) in rejected {
+            NSLog("[xCleaner] SafetyGuard chặn (dọn ruột): %@ — %@", url.path, reason.localizedDescription)
         }
-        return try remove(paths: children, prompt: prompt)
+        guard !accepted.isEmpty else { return Report() }
+
+        let manifest = try writeManifest(accepted)
+        defer { try? FileManager.default.removeItem(at: manifest) }
+
+        let m = shellQuote(manifest.path)
+        // `-mindepth 1` giữ lại chính thư mục; `-maxdepth 1` để `rm -rf` lo phần bên trong.
+        let command = "/usr/bin/xargs -0 -I DIR /usr/bin/find DIR -mindepth 1 -maxdepth 1 "
+            + "-exec /bin/rm -rf -- {} + < \(m) 2>&1; /bin/rm -f \(m); exit 0"
+        let out = try runAsAdmin(command: command, prompt: prompt)
+
+        var report = Report(stdout: out)
+        report.errorLines = out.split(separator: "\n").map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return report
     }
 
     /// Kiểm tra nhanh xem người dùng có quyền ghi trực tiếp không (để biết có cần hỏi mật khẩu).

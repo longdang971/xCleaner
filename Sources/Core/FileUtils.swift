@@ -25,9 +25,11 @@ enum FileUtils {
     static func directorySize(_ url: URL, isCancelled: () -> Bool = { false }) -> Int64 {
         var total: Int64 = 0
         var counter = 0
+        // KHÔNG dùng `.skipsPackageDescendants`: app nào cũng nhét helper dạng `.app` vào
+        // bên trong mình (Chrome, Xcode…), bỏ qua ruột chúng là báo thiếu phần lớn dung lượng.
         guard let e = fm.enumerator(at: url,
                                     includingPropertiesForKeys: Array(sizeKeys),
-                                    options: [.skipsPackageDescendants],
+                                    options: [],
                                     errorHandler: { _, _ in true }) else { return 0 }
         for case let child as URL in e {
             counter += 1

@@ -32,6 +32,88 @@ final class ProgressThrottle {
     }
 }
 
+/// Kéo vòng tiến trình đi mượt.
+///
+/// Bộ quét chỉ biết mình đang ở chặng nào, nên con số thật nhảy từng nấc to đùng — năm chặng
+/// là năm cú giật 20%. Lớp này giữ hai mốc: `target` là nấc thật vừa nhận, `ceiling` là trần
+/// của chặng đang chạy (luôn thấp hơn nấc kế tiếp). Mỗi nhịp 1/60 giây nó kéo giá trị hiển thị
+/// tới `target` thật nhanh rồi bò chậm dần về `ceiling` trong lúc chờ nấc sau. Vòng tròn nhờ đó
+/// không bao giờ đứng im, cũng không bao giờ vượt quá phần việc đã thật sự xong.
+@MainActor
+final class ProgressSmoother {
+    private var value: Double = 0
+    private var target: Double = 0
+    private var ceiling: Double = 0
+    private var timer: Timer?
+    private let onChange: (Double) -> Void
+
+    /// Đuổi kịp nấc thật trong khoảng một phần năm giây.
+    private let catchUp = 0.18
+    /// Nhưng không quá nửa vòng mỗi giây: một chặng ngắn xong cái rụp làm nấc thật vọt lên
+    /// cả mấy chục phần trăm, để nguyên thì vòng tròn lại giật đúng như cũ.
+    private let maxStep = 0.5 / 60.0
+    /// Bò trong chặng: tiệm cận trần với hằng số thời gian khoảng 1,4 giây.
+    private let creep = 0.012
+
+    init(onChange: @escaping (Double) -> Void) { self.onChange = onChange }
+
+    deinit { timer?.invalidate() }
+
+    func reset() {
+        stop()
+        value = 0; target = 0; ceiling = 0
+        onChange(0)
+    }
+
+    /// Nấc thật vừa nhận, kèm trần được phép bò tới trong lúc chờ nấc sau.
+    func report(_ fraction: Double, ceiling limit: Double) {
+        target = max(target, min(1, fraction))
+        ceiling = max(ceiling, max(min(1, limit), target))
+        start()
+    }
+
+    /// Xong hẳn — màn hình đã chuyển, không việc gì phải bò nốt cho đẹp.
+    func complete() {
+        stop()
+        value = 1; target = 1; ceiling = 1
+        onChange(1)
+    }
+
+    private func start() {
+        guard timer == nil else { return }
+        // `[weak self]` phải nằm ở closure của Timer: đặt nó ở closure bên trong thì closure
+        // ngoài vẫn giữ self để dựng closure trong, và cái timer sống mãi cùng cái store.
+        let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.tick()
+            }
+        }
+        // Chế độ .common để vòng tròn không đứng hình khi người dùng đang kéo cửa sổ.
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    private func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func tick() {
+        let before = value
+        if value < target {
+            let step = min(max((target - value) * catchUp, 0.0012), maxStep)
+            value = min(target, value + step)
+        } else if value < ceiling {
+            value += (ceiling - value) * creep
+        } else {
+            stop()                     // đã chạm trần, chờ nấc sau đánh thức
+            return
+        }
+        if value != before { onChange(value) }
+    }
+}
+
 /// Ứng dụng đang mở mà thao tác sắp tới sẽ đụng tới — chờ người dùng quyết định.
 struct PendingQuit: Identifiable, Equatable {
     let id = UUID()
@@ -78,6 +160,7 @@ final class ScanStore: ObservableObject {
 
     private let cancelToken = CancelToken()
     private let throttle = ProgressThrottle()
+    private lazy var smoother = ProgressSmoother { [weak self] v in self?.progress = v }
 
     init(module: CleanModule, settings: AppSettings) {
         self.module = module
@@ -107,7 +190,7 @@ final class ScanStore: ObservableObject {
         cancelToken.reset()
         phase = .scanning
         groups = []
-        progress = 0
+        smoother.reset()
         liveBytes = 0
         outcome = nil
         lastError = nil
@@ -132,7 +215,7 @@ final class ScanStore: ObservableObject {
                 }
                 throttle.emit {
                     guard let self else { return }
-                    self.progress = p.fraction
+                    self.smoother.report(p.fraction, ceiling: p.ceiling)
                     self.statusText = p.message
                     if p.bytesFound > 0 { self.liveBytes = p.bytesFound }
                     if self.currentStage != p.stageIndex {
@@ -161,7 +244,7 @@ final class ScanStore: ObservableObject {
                     self.groups = g
                     self.liveBytes = g.reduce(0) { $0 + $1.totalSize }
                     self.phase = token.isCancelled && g.isEmpty ? .idle : .results
-                    self.progress = 1
+                    self.smoother.complete()
                     self.statusText = g.isEmpty ? "Không tìm thấy gì để dọn" : "Sẵn sàng dọn"
                 }
             }
@@ -181,6 +264,7 @@ final class ScanStore: ObservableObject {
 
     /// Chỉ còn Quét thông minh dùng màn hình dạng nhóm; nó tự gọi các bộ quét con bên trong.
     private func makeScanner() -> ModuleScanner { SmartScanScanner() }
+
 
     // MARK: Chọn
 
@@ -272,7 +356,12 @@ final class ScanStore: ObservableObject {
             .forEach { $0.terminate() }
         // Cho app một nhịp để đóng hẳn; không chờ thì tệp vừa xoá lại bị ghi đè ngay.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-            self?.advanceQuitQueue()
+            guard let self else { return }
+            // `terminate()` chỉ là lời đề nghị: app còn tài liệu chưa lưu sẽ hiện hộp hỏi
+            // và ở lại. Dọn lúc đó thì nó ghi đè lại đúng thứ vừa xoá — nên giữ nguyên hộp
+            // thoại để người dùng xử lý xong rồi bấm lại.
+            guard !FileUtils.isRunning(bundleID: pending.bundleID) else { return }
+            self.advanceQuitQueue()
         }
     }
 
@@ -323,7 +412,7 @@ final class ScanStore: ObservableObject {
         }
 
         phase = .cleaning
-        progress = 0
+        smoother.reset()
         statusText = "Đang dọn…"
         cleaned = []
         cleanTotal = ordered.count
@@ -347,7 +436,9 @@ final class ScanStore: ObservableObject {
             let result = Remover.perform(request, progress: { fraction, message in
                 throttle.emit {
                     guard let self else { return }
-                    self.progress = fraction
+                    // Lúc dọn thì mốc thật đã mịn sẵn (từng mục một), chỉ cần nội suy giữa
+                    // hai mốc chứ không phải bò thêm.
+                    self.smoother.report(fraction, ceiling: fraction)
                     self.statusText = message
                 }
             }, itemFinished: { item, ok in
@@ -378,7 +469,7 @@ final class ScanStore: ObservableObject {
                 withAnimation(Motion.standard) {
                     self.outcome = result
                     self.phase = .done
-                    self.progress = 1
+                    self.smoother.complete()
                     self.currentStage = nil
                     self.statusText = result.wasCancelled && result.removedCount == 0
                         ? "Đã huỷ" : "Đã dọn xong"
@@ -398,11 +489,11 @@ final class ScanStore: ObservableObject {
     /// Bỏ kết quả và quay về màn khởi đầu, như chưa từng quét.
     func backToStart() {
         cancelToken.cancel()
+        smoother.reset()
         withAnimation(Motion.standard) {
             groups = []
             outcome = nil
             restoredCount = 0
-            progress = 0
             liveBytes = 0
             statusText = ""
             stages = []
@@ -451,7 +542,8 @@ final class ScanStore: ObservableObject {
                 self.cleanFreed += item.size
                 self.cleaned.append(CleanedEntry(name: item.name, bytes: item.size,
                                                  stageIndex: idx))
-                self.progress = Double(n + 1) / Double(plan.count)
+                let f = Double(n + 1) / Double(plan.count)
+                self.smoother.report(f, ceiling: f)
             }
         }
     }
@@ -460,9 +552,205 @@ final class ScanStore: ObservableObject {
     func reset() {
         phase = groups.isEmpty ? .idle : .results
         outcome = nil
-        progress = groups.isEmpty ? 0 : 1
+        if groups.isEmpty { smoother.reset() } else { smoother.complete() }
         liveBytes = groups.reduce(0) { $0 + $1.totalSize }
         statusText = groups.isEmpty ? "" : "Sẵn sàng dọn"
+    }
+}
+
+
+// MARK: - Mục khởi động cùng máy
+
+@MainActor
+final class StartupStore: ObservableObject {
+    @Published var items: [StartupScanner.Item] = []
+    @Published var isLoading = false
+    @Published var progress: Double = 0
+    @Published var statusText = ""
+    @Published var search = ""
+    @Published var filter: Filter = .thirdParty
+    @Published var lastError: String?
+    /// Mục đang chờ macOS trả lời — để khoá công tắc, tránh bấm hai lần.
+    @Published var working: Set<String> = []
+    @Published var pendingRemoval: StartupScanner.Item?
+
+    enum Filter: String, CaseIterable, Identifiable {
+        case thirdParty = "Của ứng dụng"
+        case all = "Tất cả"
+        case disabled = "Đang tắt"
+        case orphan = "Không còn dùng"
+        var id: String { rawValue }
+    }
+
+    private let settings: AppSettings
+    private let cancelToken = CancelToken()
+    private let throttle = ProgressThrottle()
+    private lazy var smoother = ProgressSmoother { [weak self] v in self?.progress = v }
+
+    init(settings: AppSettings) { self.settings = settings }
+
+    var visibleItems: [StartupScanner.Item] {
+        var list = items
+        switch filter {
+        case .thirdParty: list = list.filter { !$0.isApple }
+        case .all:        break
+        case .disabled:   list = list.filter(\.isDisabled)
+        case .orphan:     list = list.filter(\.isOrphan)
+        }
+        if !search.isEmpty {
+            list = list.filter {
+                $0.name.localizedCaseInsensitiveContains(search)
+                    || $0.label.localizedCaseInsensitiveContains(search)
+            }
+        }
+        return list
+    }
+
+    var activeCount: Int { items.filter { !$0.isApple && !$0.isDisabled }.count }
+    var orphanCount: Int { items.filter(\.isOrphan).count }
+
+    func load() {
+        guard !isLoading else { return }
+        isLoading = true
+        cancelToken.reset()
+        smoother.reset()
+        lastError = nil
+        statusText = "Đang đọc danh sách…"
+        let token = cancelToken
+        let throttle = self.throttle
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = StartupScanner().scan(cancel: token) { p in
+                throttle.emit {
+                    guard let self else { return }
+                    self.smoother.report(p.fraction, ceiling: p.ceiling)
+                    self.statusText = p.message
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.smoother.complete()
+                withAnimation(Motion.standard) {
+                    self.items = result
+                    self.isLoading = false
+                    self.statusText = "\(result.count) mục"
+                }
+            }
+        }
+    }
+
+    func cancel() {
+        cancelToken.cancel()
+        statusText = "Đang dừng…"
+    }
+
+    func backToStart() {
+        cancelToken.cancel()
+        smoother.reset()
+        withAnimation(Motion.standard) {
+            items = []
+            search = ""
+            statusText = ""
+            lastError = nil
+        }
+    }
+
+    /// Bật/tắt một mục. Chạy nền vì với dịch vụ nền thì macOS còn hiện hộp hỏi mật khẩu.
+    func toggle(_ item: StartupScanner.Item) {
+        guard !item.isApple, !working.contains(item.id) else { return }
+        let turnOn = item.isDisabled
+        working.insert(item.id)
+        lastError = nil
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var failure: String?
+            do {
+                try LaunchControl.setEnabled(turnOn, label: item.label,
+                                             plist: item.plist, domain: item.domain)
+            } catch {
+                failure = LaunchControl.isCancellation(error) ? nil : error.localizedDescription
+            }
+            // Hỏi lại chính hệ thống thay vì tin vào lệnh vừa chạy: người dùng có thể đã
+            // bấm Huỷ ở hộp mật khẩu, và lúc đó không có gì thay đổi cả.
+            let disabled = LaunchControl.disabledLabels(in: item.domain)
+            let loaded = LaunchControl.loaded()
+
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.working.remove(item.id)
+                self.lastError = failure
+                guard let i = self.items.firstIndex(where: { $0.id == item.id }) else { return }
+                withAnimation(Motion.snappy) {
+                    self.items[i].isDisabled = disabled.contains(item.label)
+                    self.items[i].isRunning = loaded[item.label].map { $0 != nil } ?? false
+                }
+            }
+        }
+    }
+
+    /// Xoá hẳn tệp plist. Đi qua đúng đường dẫn xoá của app: hàng rào an toàn, Thùng rác,
+    /// và hộp mật khẩu cho phần nằm ngoài thư mục nhà.
+    func remove(_ item: StartupScanner.Item) {
+        guard !item.isApple, !working.contains(item.id) else { return }
+        working.insert(item.id)
+        lastError = nil
+
+        let cleanItem = CleanItem(url: item.plist,
+                                  name: item.name,
+                                  detail: FileUtils.prettyPath(item.plist),
+                                  size: max(1, FileUtils.size(of: item.plist)),
+                                  isSelected: true,
+                                  requiresAdmin: PrivilegedRunner.needsAdmin(for: item.plist),
+                                  isDirectory: false,
+                                  emptyContentsOnly: false,
+                                  category: "",
+                                  safety: .review)
+        let request = Remover.Request(
+            items: [cleanItem],
+            moveToTrash: settings.moveToTrash,
+            adminPrompt: "xCleaner cần quyền quản trị để xoá mục khởi động “\(item.name)”.",
+            cancel: CancelToken())
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var removed = false
+            var failure: String?
+
+            if item.domain.needsAdmin {
+                // Dịch vụ nền: tắt và xoá đều cần root, gói chung một lần hỏi mật khẩu.
+                do {
+                    removed = try LaunchControl.disableAndRemove(label: item.label,
+                                                                 plist: item.plist,
+                                                                 domain: item.domain)
+                    if !removed { failure = "Không xoá được tệp này." }
+                } catch {
+                    failure = LaunchControl.isCancellation(error) ? nil : error.localizedDescription
+                }
+            } else {
+                // Tắt trước rồi mới xoá: xoá tệp không gỡ được thứ đang nằm sẵn trong bộ nhớ.
+                try? LaunchControl.setEnabled(false, label: item.label,
+                                              plist: item.plist, domain: item.domain)
+                let outcome = Remover.perform(request, progress: { _, _ in })
+                removed = outcome.removedCount > 0
+                if !removed && !outcome.wasCancelled {
+                    failure = outcome.failures.first?.reason ?? "Không xoá được tệp này."
+                }
+            }
+
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.working.remove(item.id)
+                self.lastError = failure
+                if removed {
+                    withAnimation(Motion.standard) {
+                        self.items.removeAll { $0.id == item.id }
+                    }
+                }
+            }
+        }
+    }
+
+    func revealInFinder(_ item: StartupScanner.Item) {
+        NSWorkspace.shared.activateFileViewerSelecting([item.plist])
     }
 }
 
@@ -639,6 +927,9 @@ final class LargeOldStore: ObservableObject {
     @Published var search = ""
     @Published var outcome: CleanOutcome?
     @Published var roots: [URL] = [FileUtils.home]
+    /// Đã quét xong ít nhất một lần. Không có cờ này thì lần quét không ra kết quả nào trông
+    /// y hệt lúc chưa bấm gì, và người dùng tưởng cái nút hỏng.
+    @Published var hasScanned = false
 
     enum Filter: String, CaseIterable, Identifiable {
         case all = "Tất cả", old = "Lâu không dùng", video = "Video", archive = "Nén / bộ cài"
@@ -696,6 +987,7 @@ final class LargeOldStore: ObservableObject {
                 withAnimation(Motion.standard) {
                     self.files = result
                     self.isScanning = false
+                    self.hasScanned = true
                     self.progress = 1
                     self.statusText = "\(result.count) tệp lớn hơn \(self.settings.largeMinMB) MB"
                 }
@@ -713,6 +1005,7 @@ final class LargeOldStore: ObservableObject {
             outcome = nil
             progress = 0
             statusText = ""
+            hasScanned = false
         }
     }
 
@@ -755,6 +1048,8 @@ final class DuplicateStore: ObservableObject {
     @Published var statusText = ""
     @Published var outcome: CleanOutcome?
     @Published var roots: [URL] = DuplicateScanner.Options().roots.filter { FileUtils.exists($0) }
+    /// Xem chú thích ở `LargeOldStore.hasScanned`.
+    @Published var hasScanned = false
 
     private let settings: AppSettings
     private let cancelToken = CancelToken()
@@ -794,6 +1089,7 @@ final class DuplicateStore: ObservableObject {
                 withAnimation(Motion.standard) {
                     self.sets = result
                     self.isScanning = false
+                    self.hasScanned = true
                     self.progress = 1
                     self.statusText = result.isEmpty
                         ? "Không tìm thấy tệp trùng"
@@ -814,6 +1110,7 @@ final class DuplicateStore: ObservableObject {
             outcome = nil
             progress = 0
             statusText = ""
+            hasScanned = false
         }
     }
 
@@ -873,6 +1170,7 @@ final class AppState: ObservableObject {
 
     private var scanStores: [CleanModule: ScanStore] = [:]
     lazy var uninstall = UninstallStore(settings: settings)
+    lazy var startup = StartupStore(settings: settings)
     lazy var largeOld = LargeOldStore(settings: settings)
     lazy var duplicates = DuplicateStore(settings: settings)
 

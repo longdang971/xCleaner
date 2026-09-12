@@ -59,6 +59,11 @@ struct ModuleSkin {
                          glow: Color(hex: "#818CF8"),
                          gem: [Color(hex: "#A5B4FC"), Color(hex: "#4F46E5"), Color(hex: "#1E1B6B")],
                          action: ModuleSkin.appAccent)
+        case .startup:
+            return .init(deep: Color(hex: "#2A0A46"), mid: Color(hex: "#7C3AED"),
+                         glow: Color(hex: "#C4B5FD"),
+                         gem: [Color(hex: "#C4B5FD"), Color(hex: "#7C3AED"), Color(hex: "#3B0F80")],
+                         action: ModuleSkin.appAccent)
         case .largeOld:
             return .init(deep: Color(hex: "#3A1204"), mid: Color(hex: "#C85A1B"),
                          glow: Color(hex: "#FB923C"),
@@ -71,6 +76,15 @@ struct ModuleSkin {
                          action: ModuleSkin.appAccent)
         }
     }
+
+    /// Trang Cài đặt cũng là một trang như mọi mục khác, nên nó cũng có nền riêng.
+    /// Tông xám xanh trung tính: không đụng màu của mục nào (hồng, chàm, cam, teal)
+    /// nên người dùng thấy ngay mình đã rời khỏi phần quét.
+    static let settings = ModuleSkin(
+        deep: Color(hex: "#0A101C"), mid: Color(hex: "#2C3A56"),
+        glow: Color(hex: "#93A7C9"),
+        gem: [Color(hex: "#CBD5E1"), Color(hex: "#64748B"), Color(hex: "#1B2536")],
+        action: ModuleSkin.appAccent)
 
     /// Nền cửa sổ: một lớp chéo đậm, một quầng sáng lệch về góc trên phải,
     /// và một quầng tối ở đáy trái để khối nội dung nổi lên.

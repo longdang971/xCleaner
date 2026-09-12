@@ -24,6 +24,19 @@ struct SmartScanScanner: ModuleScanner {
             case .misc:     return .init(id: "misc", title: "Mục khác", icon: "macwindow")
             }
         }
+
+        /// Chặng này thường ngốn bao nhiêu phần thời gian của cả lần quét. Đo trên máy thật:
+        /// riêng bộ nhớ đệm đã lâu bằng tất cả những chặng còn lại cộng lại, vì nó phải đo
+        /// dung lượng của hàng trăm thư mục con.
+        var weight: Double {
+            switch self {
+            case .cache:    return 0.50
+            case .logs:     return 0.14
+            case .misc:     return 0.08
+            case .trash:    return 0.16
+            case .browsers: return 0.12
+            }
+        }
     }
 
     /// Chỉ đếm xem thư mục có gì không — không đo dung lượng, nên rất nhanh.
@@ -45,6 +58,10 @@ struct SmartScanScanner: ModuleScanner {
         return false
     }
 
+    /// Thứ tự ở đây phải đúng bằng thứ tự `scan(cancel:progress:)` chạy qua các chặng:
+    /// rác hệ thống (đệm → nhật ký → mục khác) rồi thùng rác rồi trình duyệt. Danh sách này
+    /// vừa là thứ tự các ô hiện lên vừa là thước đo của vòng phần trăm, nên xếp sai một chỗ
+    /// là vòng tròn chạy lùi giữa chừng.
     private static func availableKinds() -> [Kind] {
         var kinds: [Kind] = []
         if hasContent(FileUtils.homePath("Library/Caches"))
@@ -54,10 +71,6 @@ struct SmartScanScanner: ModuleScanner {
             || hasContent(FileUtils.homePath("Library/Logs/DiagnosticReports")) {
             kinds.append(.logs)
         }
-        if !BrowserPrivacyScanner.installedBrowsers().isEmpty { kinds.append(.browsers) }
-        if trashHasContent() || hasContent(FileUtils.homePath("Downloads")) {
-            kinds.append(.trash)
-        }
         // Thư mục danh sách gần đây bị macOS chặn cũng tính là có việc phải làm:
         // người dùng cần thấy ô đó để biết mà cấp quyền.
         let recents = FileUtils.homePath("Library/Application Support/com.apple.sharedfilelist")
@@ -66,6 +79,10 @@ struct SmartScanScanner: ModuleScanner {
             || FileUtils.directoryState(recents) == .blocked {
             kinds.append(.misc)
         }
+        if trashHasContent() || hasContent(FileUtils.homePath("Downloads")) {
+            kinds.append(.trash)
+        }
+        if !BrowserPrivacyScanner.installedBrowsers().isEmpty { kinds.append(.browsers) }
         return kinds
     }
 
@@ -76,17 +93,33 @@ struct SmartScanScanner: ModuleScanner {
     private static let junkKindMap: [Int: Kind] = [0: .cache, 1: .cache, 2: .cache,
                                                    3: .logs, 4: .logs, 5: .logs, 6: .misc]
 
+    /// Bộ quét rác hệ thống có bảy chặng con, ba chặng đầu thuộc ô "Bộ nhớ đệm", ba chặng
+    /// kế thuộc ô "Nhật ký", chặng cuối thuộc ô "Mục khác". Đổi phần trăm của nó sang phần
+    /// trăm của ô tương ứng, để vòng tròn đi đều trong suốt một ô chứ không nhảy từng nấc.
+    private static func junkShare(_ kind: Kind, of fraction: Double) -> Double {
+        let range: (Double, Double)
+        switch kind {
+        case .cache: range = (0, 3.0 / 7)
+        case .logs:  range = (3.0 / 7, 6.0 / 7)
+        default:     range = (6.0 / 7, 1)
+        }
+        return min(1, max(0, (fraction - range.0) / (range.1 - range.0)))
+    }
+
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var bytes: Int64 = 0
         let kinds = Self.availableKinds()
-        let stage = StageReporter(total: kinds.count, emit: progress)
+        let stage = StageReporter(weights: kinds.map(\.weight), emit: progress)
         func index(_ k: Kind) -> Int? { kinds.firstIndex(of: k) }
 
         if let i = index(.cache) ?? index(.logs) { stage.begin(i) }
         let junk = SystemJunkScanner()
             .scan(cancel: cancel) { p in
-                if let i = p.stageIndex, let kind = Self.junkKindMap[i],
-                   let mapped = index(kind) { stage.jump(to: mapped) }
+                var share: Double? = nil
+                if let i = p.stageIndex, let kind = Self.junkKindMap[i] {
+                    if let mapped = index(kind) { stage.jump(to: mapped) }
+                    share = Self.junkShare(kind, of: p.fraction)
+                }
                 let sb = p.stageBytes
                 if let i = index(.cache), let a = sb[0], let b = sb[1], let c = sb[2] {
                     stage.mark(i, a + b + c)
@@ -97,7 +130,7 @@ struct SmartScanScanner: ModuleScanner {
                 if let i = index(.misc), let v = sb[6] { stage.mark(i, v) }
                 // Chuyển tiếp mục vừa tìm thấy, nếu không thẻ đang quét chẳng có gì để liệt kê.
                 if let n = p.foundName, p.foundBytes > 0 { stage.found(n, p.foundBytes) }
-                stage.working(p.message)
+                stage.working(p.message, within: share)
             }
         bytes += junk.reduce(0) { $0 + $1.totalSize }
         if cancel.isCancelled { return junk }
@@ -108,7 +141,7 @@ struct SmartScanScanner: ModuleScanner {
             trash = TrashDownloadsScanner()
                 .scan(cancel: cancel) { p in
                     if let n = p.foundName, p.foundBytes > 0 { stage.found(n, p.foundBytes) }
-                    stage.working(p.message)
+                    stage.working(p.message, within: p.fraction)
                 }
             let trashBytes = trash.reduce(0) { $0 + $1.totalSize }
             bytes += trashBytes
@@ -119,7 +152,7 @@ struct SmartScanScanner: ModuleScanner {
         if let bi = index(.browsers) { stage.begin(bi) }
         let browsers = BrowserPrivacyScanner().scan(cancel: cancel) { p in
             if let n = p.foundName, p.foundBytes > 0 { stage.found(n, p.foundBytes) }
-            stage.working(p.message)
+            stage.working(p.message, within: p.fraction)
         }
 
         var result: [CleanGroup] = []

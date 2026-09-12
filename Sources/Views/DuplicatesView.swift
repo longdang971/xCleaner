@@ -9,7 +9,9 @@ struct DuplicatesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if store.sets.isEmpty && !store.isScanning {
+            if store.sets.isEmpty && !store.isScanning && store.hasScanned {
+                emptyResult
+            } else if store.sets.isEmpty && !store.isScanning {
                 startScreen
             } else if store.isScanning {
                 VStack(spacing: 16) {
@@ -17,21 +19,21 @@ struct DuplicatesView: View {
                              caption: store.statusText, diameter: 170, accent: skin.glow)
                     Text("Ba vòng lọc: kích thước → băm nhanh → so từng byte")
                         .font(.system(size: 11.5)).foregroundStyle(Palette.textSecond)
-                    PillButton(title: "Dừng", systemImage: "stop.fill") { store.cancel() }
+                    ActionButton(title: "Dừng", systemImage: "stop.fill") { store.cancel() }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HeroHeadline(title: "Có thể lấy lại \(Fmt.size(store.reclaimable))",
                              subtitle: "\(store.sets.count) nhóm trùng lặp · mỗi nhóm luôn giữ lại ít nhất một bản") {
                     HStack(spacing: 8) {
-                        PillButton(title: "Quay lại", systemImage: "chevron.left") {
+                        ActionButton(title: "Quay lại", systemImage: "chevron.left") {
                             store.backToStart()
                         }
-                        PillButton(title: "Chọn tự động", systemImage: "wand.and.stars") {
+                        ActionButton(title: "Chọn tự động", systemImage: "wand.and.stars") {
                             withAnimation(Motion.snappy) { store.autoSelect() }
                         }
-                        PillButton(title: "Chọn thư mục…", systemImage: "folder") { pickRoots() }
-                        PillButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
+                        ActionButton(title: "Chọn thư mục…", systemImage: "folder") { pickRoots() }
+                        ActionButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
                     }
                 }
                 .padding(.bottom, 20)
@@ -55,12 +57,29 @@ struct DuplicatesView: View {
         .overlay(alignment: .bottom) {
             if !store.sets.isEmpty && !store.isScanning { bottomBar }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .xcRescan)) { _ in store.scan() }
         .confirmationDialog("Chuyển \(store.selected.count) bản sao vào Thùng rác?",
                             isPresented: $confirming, titleVisibility: .visible) {
             Button("Chuyển vào Thùng rác", role: .destructive) { store.remove() }
             Button("Huỷ", role: .cancel) { }
         } message: {
             Text("Mỗi nhóm luôn giữ lại ít nhất một bản.")
+        }
+    }
+
+    /// Quét xong mà không có nhóm trùng nào — nói thẳng ra thay vì quay về màn khởi đầu.
+    private var emptyResult: some View {
+        VStack(spacing: 18) {
+            EmptyStateView(icon: "checkmark.seal",
+                           title: "Không tìm thấy tệp trùng nào",
+                           message: "Những thư mục vừa quét không có hai tệp nào giống hệt nhau. Thử chọn thư mục khác, hoặc hạ mốc bỏ qua trong Cài đặt ▸ Quét.",
+                           gem: skin.gem)
+            HStack(spacing: 10) {
+                ActionButton(title: "Chọn thư mục…", systemImage: "folder") { pickRoots() }
+                ActionButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
+                ActionButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
+            }
+            .padding(.bottom, 30)
         }
     }
 
@@ -72,7 +91,7 @@ struct DuplicatesView: View {
                         icon: CleanModule.duplicates.icon,
                         gem: skin.gem,
                         highlights: CleanModule.duplicates.highlights) {
-                PillButton(title: "Chọn thư mục khác…", systemImage: "folder") { pickRoots() }
+                ActionButton(title: "Chọn thư mục khác…", systemImage: "folder") { pickRoots() }
             }
             Spacer()
         }

@@ -4,9 +4,12 @@ import SwiftUI
 /// và tên đầy đủ; mục đang chọn nằm trong một viên thuốc kính.
 struct SidebarView: View {
     @Binding var selection: CleanModule
+    /// Cài đặt là một trang như các mục quét, nên hàng của nó cũng sáng lên khi đang mở.
+    var settingsActive: Bool = false
     var onOpenSettings: () -> Void = {}
 
     @State private var hovered: CleanModule?
+    @State private var settingsHovered = false
     @State private var expanded = {
         #if DEBUG
         return ProcessInfo.processInfo.environment["XCLEANER_SIDEBAR"] == "expanded"
@@ -18,7 +21,7 @@ struct SidebarView: View {
     private var width: CGFloat { expanded ? Metrics.sidebarExpanded : Metrics.sidebarWidth }
 
     private let cleaning: [CleanModule] = [.smartScan]
-    private let tools: [CleanModule] = [.uninstaller, .largeOld, .duplicates]
+    private let tools: [CleanModule] = [.uninstaller, .startup, .largeOld, .duplicates]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -59,11 +62,11 @@ struct SidebarView: View {
     }
 
     private func row(_ m: CleanModule) -> some View {
-        let isSelected = selection == m
+        let isSelected = selection == m && !settingsActive
         let skin = ModuleSkin.skin(for: m)
 
         return Button {
-            guard selection != m else { return }
+            guard !isSelected else { return }
             withAnimation(Motion.standard) { selection = m }
         } label: {
             HStack(spacing: expanded ? 14 : 0) {
@@ -107,28 +110,49 @@ struct SidebarView: View {
         }
     }
 
+    /// Cùng hình dạng, cùng chiều cao, cùng viên thuốc chọn như các mục ở trên —
+    /// chỉ khác chỗ đứng: nó nằm dưới đáy, tách khỏi cụm quét.
     private var settingsRow: some View {
-        Button(action: onOpenSettings) {
-            HStack(spacing: 14) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color.white.opacity(0.75))
-                    .frame(width: 32)
+        Button {
+            guard !settingsActive else { return }
+            onOpenSettings()
+        } label: {
+            HStack(spacing: expanded ? 14 : 0) {
+                SidebarGlyph(icon: "gearshape", colors: ModuleSkin.settings.gem,
+                             active: settingsActive, hovering: settingsHovered)
                     .frame(maxWidth: expanded ? nil : .infinity)
+
                 if expanded {
                     Text("Cài đặt")
-                        .font(.system(size: 13.5))
-                        .foregroundStyle(Color.white.opacity(0.75))
-                        .fixedSize().transition(.opacity)
+                        .font(.system(size: 14.5, weight: settingsActive ? .semibold : .regular))
+                        .foregroundStyle(settingsActive ? .white : Color.white.opacity(0.88))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .transition(.opacity)
                     Spacer(minLength: 0)
                 }
             }
-            .padding(.horizontal, expanded ? 16 : 8)
-            .frame(height: 38)
+            .padding(.horizontal, expanded ? 16 : 6)
+            .frame(height: 46)
+            .background {
+                if settingsActive {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(Color.white.opacity(0.13))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.26), lineWidth: 1)
+                        )
+                } else if settingsHovered {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(Color.white.opacity(0.07))
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, expanded ? 12 : 14)
+        .help(expanded ? "" : "Cài đặt")
+        .onHover { h in withAnimation(Motion.gentle) { settingsHovered = h } }
     }
 }
 

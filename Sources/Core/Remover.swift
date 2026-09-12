@@ -42,6 +42,9 @@ enum Remover {
 
         let total = max(1, userItems.count + (adminItems.isEmpty ? 0 : 1))
         var done = 0
+        /// Những mục xoá trực tiếp không nổi, đã đẩy sang đợt chạy bằng root.
+        var escalatedIDs: Set<UUID> = []
+        var trashed = 0
 
         // ---- Phần không cần quyền: xoá trực tiếp ----
         for item in userItems {
@@ -57,9 +60,10 @@ enum Remover {
 
             for t in targets {
                 do {
-                    if request.moveToTrash && !item.emptyContentsOnly {
+                    if request.moveToTrash {
                         var resulting: NSURL?
                         try fm.trashItem(at: t, resultingItemURL: &resulting)
+                        if resulting != nil { trashed += 1 }
                     } else {
                         try fm.removeItem(at: t)
                     }
@@ -71,6 +75,7 @@ enum Remover {
                         var escalated = item
                         escalated.requiresAdmin = true
                         adminItems.append(escalated)
+                        escalatedIDs.insert(item.id)
                         itemFailed = true
                         break
                     }
@@ -84,8 +89,12 @@ enum Remover {
             if !itemFailed {
                 outcome.removedCount += 1
                 outcome.freedBytes += item.size
+                if trashed > 0 { outcome.trashedCount += 1; trashed = 0 }
             }
-            itemFinished(item, !itemFailed)
+            trashed = 0
+            // Mục vừa chuyển sang đợt chạy bằng root thì chưa xong — đợt sau sẽ báo kết quả
+            // thật của nó. Báo ngay ở đây là màn hình đếm mục đó hai lần.
+            if !escalatedIDs.contains(item.id) { itemFinished(item, !itemFailed) }
         }
 
         // ---- Phần cần quyền root: gom một lần hỏi mật khẩu ----
@@ -96,19 +105,32 @@ enum Remover {
             let direct = adminItems.filter { !$0.emptyContentsOnly }.map(\.url)
             let toEmpty = adminItems.filter(\.emptyContentsOnly).map(\.url)
 
-            var paths = direct
-            for d in toEmpty { paths.append(contentsOf: FileUtils.children(of: d)) }
-
             do {
-                let report = try PrivilegedRunner.remove(paths: paths, prompt: request.adminPrompt)
+                var report = PrivilegedRunner.Report()
+                if !direct.isEmpty {
+                    report = try PrivilegedRunner.remove(paths: direct, prompt: request.adminPrompt)
+                }
+                // Thư mục cần dọn ruột giao hẳn cho root: tự liệt kê bằng quyền người dùng
+                // thì thư mục root-only trả về danh sách rỗng và app tưởng đã dọn xong.
+                if !toEmpty.isEmpty {
+                    let r = try PrivilegedRunner.emptyContents(of: toEmpty, prompt: request.adminPrompt)
+                    report.errorLines.append(contentsOf: r.errorLines)
+                }
                 for line in report.errorLines.prefix(20) {
                     NSLog("[xCleaner] rm(root): %@", line)
                 }
                 // Xác nhận từng mục thay vì tin vào mã thoát của rm.
                 for item in adminItems {
-                    let gone = item.emptyContentsOnly
-                        ? FileUtils.children(of: item.url).isEmpty
-                        : !FileUtils.exists(item.url)
+                    let gone: Bool
+                    if item.emptyContentsOnly {
+                        // Thư mục mình không được phép đọc thì "rỗng" chẳng chứng minh điều gì —
+                        // lúc đó dựa vào việc lệnh chạy dưới quyền root có kêu ca gì không.
+                        gone = FileUtils.directoryState(item.url) == .blocked
+                            ? report.errorLines.isEmpty
+                            : FileUtils.children(of: item.url).isEmpty
+                    } else {
+                        gone = !FileUtils.exists(item.url)
+                    }
                     if gone {
                         outcome.removedCount += 1
                         outcome.freedBytes += item.size

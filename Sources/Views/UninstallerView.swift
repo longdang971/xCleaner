@@ -37,6 +37,7 @@ struct UninstallerView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .xcRescan)) { _ in store.load() }
         .animation(Motion.standard, value: store.pendingQuit)
         .confirmationDialog("Gỡ \(store.selectedApp?.name ?? "")?",
                             isPresented: $confirming, titleVisibility: .visible) {
@@ -119,12 +120,16 @@ struct UninstallerView: View {
                     .contentTransition(.opacity)
             }
             .foregroundStyle(.white)
-            .padding(.horizontal, 13)
-            .frame(height: 30)
-            .background(Capsule().fill(Color.white.opacity(0.13)))
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
-            .clipShape(Capsule())
-            .contentShape(Capsule())
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(LinearGradient(colors: [.white.opacity(0.20), .white.opacity(0.12)],
+                                     startPoint: .top, endPoint: .bottom)))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.28), lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .shadow(color: .black.opacity(0.24), radius: 2.5, y: 1)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Đổi cách sắp xếp")
@@ -202,7 +207,7 @@ struct UninstallerView: View {
                     if store.isRemoving {
                         ProgressView().controlSize(.small).tint(.white)
                     } else {
-                        PillButton(title: "Gỡ ứng dụng", systemImage: "trash", kind: .solid,
+                        ActionButton(title: "Gỡ ứng dụng", systemImage: "trash", kind: .prominent,
                                    isEnabled: store.leftovers.contains(where: \.isSelected)) {
                             confirming = true
                         }

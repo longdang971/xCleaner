@@ -7,6 +7,7 @@ import Foundation
 enum CleanModule: String, CaseIterable, Identifiable {
     case smartScan
     case uninstaller
+    case startup
     case largeOld
     case duplicates
 
@@ -16,6 +17,7 @@ enum CleanModule: String, CaseIterable, Identifiable {
         switch self {
         case .smartScan:      return "Quét thông minh"
         case .uninstaller:    return "Gỡ ứng dụng"
+        case .startup:        return "Khởi động cùng máy"
         case .largeOld:       return "Tệp lớn & cũ"
         case .duplicates:     return "Tệp trùng lặp"
         }
@@ -25,6 +27,7 @@ enum CleanModule: String, CaseIterable, Identifiable {
         switch self {
         case .smartScan:      return "Rác hệ thống, thùng rác, tải về và trình duyệt"
         case .uninstaller:    return "Xoá app cùng mọi tệp còn sót"
+        case .startup:        return "Thứ tự chạy khi bật máy"
         case .largeOld:       return "Tìm những gì đang chiếm chỗ"
         case .duplicates:     return "So khớp nội dung từng byte"
         }
@@ -34,6 +37,7 @@ enum CleanModule: String, CaseIterable, Identifiable {
         switch self {
         case .smartScan:      return "sparkles"
         case .uninstaller:    return "shippingbox"
+        case .startup:        return "power"
         case .largeOld:       return "chart.pie"
         case .duplicates:     return "square.on.square"
         }
@@ -50,6 +54,10 @@ enum CleanModule: String, CaseIterable, Identifiable {
             return [("shippingbox", "Gỡ app cùng mọi tệp còn sót"),
                     ("folder.fill", "Dữ liệu, tuỳ chọn, container"),
                     ("bolt.horizontal.fill", "Tác vụ nền và biên nhận cài đặt")]
+        case .startup:
+            return [("bolt.horizontal.fill", "Bộ cập nhật và helper chạy ngầm"),
+                    ("power", "Tắt thứ không cần, bật lại lúc nào cũng được"),
+                    ("questionmark.folder", "Tệp bỏ quên của app đã gỡ")]
         case .largeOld:
             return [("chart.pie.fill", "Tệp chiếm nhiều chỗ nhất"),
                     ("clock.fill", "Thứ lâu rồi không đụng tới"),
@@ -65,7 +73,7 @@ enum CleanModule: String, CaseIterable, Identifiable {
     var usesGroupedResults: Bool {
         switch self {
         case .smartScan: return true
-        case .uninstaller, .largeOld, .duplicates: return false
+        case .uninstaller, .startup, .largeOld, .duplicates: return false
         }
     }
 }
@@ -241,6 +249,9 @@ struct ScanProgress {
     /// Mục vừa tìm thấy — để thẻ đang quét có thứ mà liệt kê thay vì trống trơn.
     var foundName: String? = nil
     var foundBytes: Int64 = 0
+    /// Mức mà vòng tròn được phép bò tới trong lúc chờ tin tiếp theo: hết phần của chặng
+    /// đang chạy, không lấn sang phần của chặng sau.
+    var ceiling: Double = 1
 }
 
 // MARK: - Tiến trình dọn
@@ -269,6 +280,10 @@ struct CleanedEntry: Identifiable, Equatable {
 
 struct CleanOutcome {
     var removedCount: Int = 0
+    /// Bao nhiêu mục thật sự đi vào Thùng rác (còn lấy lại được) thay vì bị xoá thẳng.
+    /// macOS không cho app đọc `~/.Trash` nếu chưa có Toàn quyền truy cập đĩa, nên đây là
+    /// cách duy nhất để biết chắc — và cũng để nói đúng với người dùng ở màn kết quả.
+    var trashedCount: Int = 0
     var freedBytes: Int64 = 0
     var failures: [(url: URL, reason: String)] = []
     var wasCancelled: Bool = false
@@ -304,6 +319,16 @@ enum Fmt {
         f.locale = Locale(identifier: "vi_VN")
         f.dateFormat = "dd/MM/yyyy"
         return f.string(from: d)
+    }
+
+    /// Chu kỳ lặp của một mục khởi động, nói theo kiểu người: "6 giờ" chứ không phải 21600.
+    static func duration(_ seconds: Int) -> String {
+        switch seconds {
+        case ..<60:      return "\(seconds) giây"
+        case ..<3600:    return "\(seconds / 60) phút"
+        case ..<86_400:  return "\(seconds / 3600) giờ"
+        default:         return "\(seconds / 86_400) ngày"
+        }
     }
 
     static func relativeAge(_ d: Date?) -> String {

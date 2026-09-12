@@ -125,19 +125,18 @@ struct SystemJunkScanner: ModuleScanner {
         var found: Int64 = 0
         let stage = StageReporter(total: 7, emit: progress)
 
-        func report(_ step: Int, _ of: Int, _ msg: String) {
-            if msg.isEmpty { stage.begin(step) } else { stage.working(msg) }
+        /// `within` là phần đã xong của riêng chặng đó, để vòng tròn đi đều trong chặng.
+        func report(_ step: Int, _ msg: String, _ within: Double? = nil) {
+            if msg.isEmpty { stage.begin(step) } else { stage.working(msg, within: within) }
         }
 
-        let steps = 7
-
         // 1. Bộ nhớ đệm người dùng
-        report(0, steps, "Bộ nhớ đệm ứng dụng…")
+        report(0, "Bộ nhớ đệm ứng dụng…")
         var userCache = itemsFromChildren(
             of: FileUtils.homePath("Library/Caches"),
             skip: ["CloudKit", "com.apple.containermanagerd", "com.apple.nsurlsessiond"],
             cancel: cancel,
-            progress: { report(0, steps, "Bộ nhớ đệm: \($0)") },
+            progress: { report(0, "Bộ nhớ đệm: \($0)", $1) },
             found: { stage.found($0, $1) })
         userCache.append(contentsOf: itemsFromChildren(
             of: FileUtils.homePath("Library/Containers"),
@@ -158,11 +157,11 @@ struct SystemJunkScanner: ModuleScanner {
         if cancel.isCancelled { return groups }
 
         // 2. Bộ nhớ đệm hệ thống (cần quyền quản trị)
-        report(1, steps, "Bộ nhớ đệm hệ thống…")
+        report(1, "Bộ nhớ đệm hệ thống…")
         let systemCache = itemsFromChildren(
             of: URL(fileURLWithPath: "/Library/Caches"),
             cancel: cancel,
-            progress: { report(1, steps, "Hệ thống: \($0)") },
+            progress: { report(1, "Hệ thống: \($0)", $1) },
             found: { stage.found($0, $1) })
         found += systemCache.reduce(0) { $0 + $1.size }
         if !systemCache.isEmpty {
@@ -174,7 +173,7 @@ struct SystemJunkScanner: ModuleScanner {
         if cancel.isCancelled { return groups }
 
         // 3. Rác của công cụ lập trình
-        report(2, steps, "Công cụ lập trình…")
+        report(2, "Công cụ lập trình…")
         var dev: [CleanItem] = []
         let devTargets: [(URL, String, String, Bool)] = [
             (FileUtils.homePath("Library/Developer/Xcode/DerivedData"), "Xcode DerivedData",
@@ -197,9 +196,9 @@ struct SystemJunkScanner: ModuleScanner {
             (FileUtils.homePath("Library/Caches/org.swift.swiftpm"), "Swift Package Manager",
              "Bản sao gói SwiftPM", true)
         ]
-        for (url, name, detail, selected) in devTargets {
+        for (i, (url, name, detail, selected)) in devTargets.enumerated() {
             if cancel.isCancelled { break }
-            report(2, steps, "Công cụ lập trình: \(name)")
+            report(2, "Công cụ lập trình: \(name)", Double(i) / Double(devTargets.count))
             if let i = makeItem(url, name: name, detail: detail, selected: selected, cancel: cancel) {
                 dev.append(i)
             }
@@ -215,8 +214,9 @@ struct SystemJunkScanner: ModuleScanner {
         if cancel.isCancelled { return groups }
 
         // 4. Nhật ký người dùng
-        report(3, steps, "Nhật ký người dùng…")
+        report(3, "Nhật ký người dùng…")
         var userLogs = itemsFromChildren(of: FileUtils.homePath("Library/Logs"), cancel: cancel,
+                                         progress: { report(3, "Nhật ký: \($0)", $1) },
                                          found: { stage.found($0, $1) })
         userLogs.append(contentsOf: [
             FileUtils.homePath("Library/Application Support/CrashReporter")
@@ -231,8 +231,9 @@ struct SystemJunkScanner: ModuleScanner {
         if cancel.isCancelled { return groups }
 
         // 5. Nhật ký hệ thống (cần quyền quản trị)
-        report(4, steps, "Nhật ký hệ thống…")
+        report(4, "Nhật ký hệ thống…")
         var sysLogs = itemsFromChildren(of: URL(fileURLWithPath: "/Library/Logs"), cancel: cancel,
+                                        progress: { report(4, "Nhật ký hệ thống: \($0)", $1 * 0.6) },
                                         found: { stage.found($0, $1) })
         // Trong /var/log chỉ đụng tới log đã xoay vòng, tuyệt đối không xoá log đang mở.
         for f in FileUtils.children(of: URL(fileURLWithPath: "/private/var/log")) {
@@ -259,7 +260,7 @@ struct SystemJunkScanner: ModuleScanner {
         if cancel.isCancelled { return groups }
 
         // 6. Báo cáo sự cố
-        report(5, steps, "Báo cáo sự cố…")
+        report(5, "Báo cáo sự cố…")
         var crash: [CleanItem] = []
         for dir in [FileUtils.homePath("Library/Logs/DiagnosticReports"),
                     URL(fileURLWithPath: "/Library/Logs/DiagnosticReports")] {
@@ -283,9 +284,10 @@ struct SystemJunkScanner: ModuleScanner {
         if cancel.isCancelled { return groups }
 
         // 7. Trạng thái ứng dụng đã lưu + gói cài đặt cũ
-        report(6, steps, "Mục khác…")
+        report(6, "Mục khác…")
         var misc = itemsFromChildren(of: FileUtils.homePath("Library/Saved Application State"),
-                                     selected: false, cancel: cancel)
+                                     selected: false, cancel: cancel,
+                                     progress: { report(6, "Trạng thái cửa sổ: \($0)", $1 * 0.7) })
             .map { item -> CleanItem in
                 var copy = item
                 copy.category = "Trạng thái cửa sổ"

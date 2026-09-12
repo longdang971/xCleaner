@@ -113,15 +113,34 @@ struct DuplicateScanner {
 
         var sets: [DuplicateSet] = []
         for (_, urls) in byFull where urls.count > 1 {
-            let size = Int64((try? urls[0].resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
-            sets.append(DuplicateSet(files: urls.sorted { $0.path < $1.path },
+            // Hai đường dẫn có thể là hai cái tên của **cùng một tệp** (liên kết cứng). Xoá
+            // một cái không giải phóng byte nào, nên gộp chúng vào một nhóm trùng lặp là hứa
+            // suông với người dùng. Chỉ giữ lại một tên cho mỗi tệp vật lý.
+            var seenNodes = Set<String>()
+            var distinct: [URL] = []
+            for u in urls {
+                if let node = Self.physicalFileKey(u), !seenNodes.insert(node).inserted { continue }
+                distinct.append(u)
+            }
+            guard distinct.count > 1 else { continue }
+            let size = Int64((try? distinct[0].resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+            sets.append(DuplicateSet(files: distinct.sorted { $0.path < $1.path },
                                      size: size,
-                                     kind: urls[0].pathExtension.uppercased()))
+                                     kind: distinct[0].pathExtension.uppercased()))
         }
         sets.sort { $0.reclaimable > $1.reclaimable }
         progress(ScanProgress(fraction: 1, message: "Xong",
                               bytesFound: sets.reduce(0) { $0 + $1.reclaimable }))
         return sets
+    }
+
+    /// Khoá nhận dạng một tệp vật lý: số ổ đĩa + số inode. Hai đường dẫn cùng khoá này là
+    /// cùng một tệp, chỉ khác cái tên.
+    static func physicalFileKey(_ url: URL) -> String? {
+        guard let a = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let inode = a[.systemFileNumber] as? Int,
+              let device = a[.systemNumber] as? Int else { return nil }
+        return "\(device):\(inode)"
     }
 
     // MARK: - Băm

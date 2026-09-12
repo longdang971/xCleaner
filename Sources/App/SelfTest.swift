@@ -25,6 +25,10 @@ enum SelfTest {
         testRecentLists()
         testDuplicates()
         testLargeOld()
+        testStartup()
+        testNestedPackageSize()
+        testHardLinkDuplicates()
+        testTrashKeepsFolder()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
     }
@@ -514,6 +518,189 @@ enum SelfTest {
         check("bỏ qua symlink", FileUtils.directorySize(sub) == size)
 
         try? FileManager.default.removeItem(at: sandbox)
+    }
+
+    private static func testStartup() {
+        print("[Startup] mục khởi động")
+        let fm = FileManager.default
+        let dir = makeSandbox()
+        let scanner = StartupScanner()
+
+        // Một agent bình thường, chạy ngay khi đăng nhập.
+        let normal = dir.appendingPathComponent("com.acme.updater.plist")
+        let normalPlist: [String: Any] = [
+            "Label": "com.acme.updater",
+            "ProgramArguments": ["/bin/sh", "-c", "echo hi"],
+            "RunAtLoad": true,
+            "StartInterval": 3600
+        ]
+        (normalPlist as NSDictionary).write(to: normal, atomically: true)
+
+        // Một agent trỏ tới chương trình đã bị xoá.
+        let orphan = dir.appendingPathComponent("com.gone.helper.plist")
+        (["Label": "com.gone.helper",
+          "Program": dir.appendingPathComponent("khong-ton-tai").path] as NSDictionary)
+            .write(to: orphan, atomically: true)
+
+        let a = scanner.read(normal, domain: .userAgent, loaded: ["com.acme.updater": 42],
+                             disabled: [])
+        check("đọc được nhãn trong plist", a?.label == "com.acme.updater")
+        check("thấy chương trình được chạy", a?.program == "/bin/sh")
+        check("biết là đang chạy", a?.isRunning == true)
+        check("biết chu kỳ lặp lại", a?.intervalSeconds == 3600)
+        check("không nhầm là rác", a?.isOrphan == false)
+        check("đọc được chi tiết", a?.detailsHidden == false)
+
+        let b = scanner.read(orphan, domain: .userAgent, loaded: [:],
+                             disabled: ["com.gone.helper"])
+        check("nhận ra chương trình không còn", b?.isOrphan == true)
+        check("nhận ra mục đang tắt", b?.isDisabled == true)
+        check("chưa nạp thì không báo đang chạy", b?.isRunning == false)
+
+        // Tệp không đọc được vẫn phải hiện ra, nhãn suy từ tên tệp.
+        let unreadable = dir.appendingPathComponent("com.vendor.daemon.plist")
+        try? "khong-phai-plist".write(to: unreadable, atomically: true, encoding: .utf8)
+        let c = scanner.read(unreadable, domain: .daemon, loaded: [:], disabled: [])
+        check("plist không đọc được vẫn hiện ra", c != nil)
+        check("lấy nhãn từ tên tệp", c?.label == "com.vendor.daemon")
+        check("đánh dấu là chưa đọc được chi tiết", c?.detailsHidden == true)
+        check("daemon thì cần quyền quản trị", c?.needsAdmin == true)
+
+        check("mục của Apple bị khoá lại",
+              scanner.read({ let u = dir.appendingPathComponent("com.apple.something.plist")
+                             (["Label": "com.apple.something"] as NSDictionary)
+                                 .write(to: u, atomically: true); return u }(),
+                           domain: .globalAgent, loaded: [:], disabled: [])?.isApple == true)
+
+        // Hai kiểu in ra của `launchctl print-disabled` qua các phiên bản macOS.
+        let cũ = LaunchControl.parseDisabled("""
+        disabled services = {
+        \t"com.a.one" => true
+        \t"com.a.two" => false
+        }
+        """)
+        check("đọc được kiểu true/false", cũ == ["com.a.one"])
+        let mới = LaunchControl.parseDisabled("""
+        disabled services = {
+        \t"com.b.one" => disabled
+        \t"com.b.two" => enabled
+        }
+        """)
+        check("đọc được kiểu disabled/enabled", mới == ["com.b.one"])
+
+        // `launchctl print` là nguồn duy nhất biết daemon có đang chạy không: `launchctl list`
+        // chạy dưới quyền người dùng không hề thấy daemon hệ thống.
+        let printed = LaunchControl.parsePrint("""
+        system/com.vendor.helper = {
+        \tactive count = 2
+        \tpath = /Library/LaunchDaemons/com.vendor.helper.plist
+        \tstate = running
+
+        \tprogram = /Library/PrivilegedHelperTools/com.vendor.helper
+        }
+        """)
+        check("đọc được trạng thái đang chạy của daemon", printed.running == true)
+        check("lấy được đường dẫn chương trình từ launchd",
+              printed.program == "/Library/PrivilegedHelperTools/com.vendor.helper")
+        // Output thật còn kèm vài dòng `state` của endpoint con; lấy nhầm dòng cuối là báo
+        // một daemon đang chạy thành đã dừng.
+        let noisy = LaunchControl.parsePrint("""
+        system/com.vendor.helper = {
+        \tstate = running
+        \tendpoints = {
+        \t\t"com.vendor.xpc" = {
+        \t\t\tstate = active
+        \t\t}
+        \t}
+        \tjob state = running
+        }
+        """)
+        check("bỏ qua các dòng state của endpoint con", noisy.running == true)
+        let stopped = LaunchControl.parsePrint("system/x = {\n\tstate = not running\n}")
+        check("biết daemon đang dừng", stopped.running == false)
+
+        check("agent không đòi mật khẩu", LaunchControl.Domain.userAgent.needsAdmin == false)
+        check("agent toàn máy cũng không đòi mật khẩu",
+              LaunchControl.Domain.globalAgent.needsAdmin == false)
+        check("dịch vụ nền thì có", LaunchControl.Domain.daemon.needsAdmin == true)
+
+        try? fm.removeItem(at: dir)
+    }
+
+    /// Thư mục chứa một `.app` con bên trong: dung lượng phải tính cả ruột cái `.app` đó.
+    /// Chrome, Xcode và hàng loạt app khác đặt helper dạng `.app` lồng bên trong.
+    private static func testNestedPackageSize() {
+        print("[FileUtils] dung lượng có gói lồng bên trong")
+        let fm = FileManager.default
+        let dir = makeSandbox()
+        let outer = dir.appendingPathComponent("Outer")
+        let inner = outer.appendingPathComponent("Inner.app/Contents")
+        try? fm.createDirectory(at: inner, withIntermediateDirectories: true)
+        let four = Data(count: 4 * 1024 * 1024)
+        let one = Data(count: 1024 * 1024)
+        try? four.write(to: inner.appendingPathComponent("big.bin"))
+        try? one.write(to: outer.appendingPathComponent("plain.bin"))
+
+        let measured = FileUtils.size(of: outer)
+        check("đếm cả ruột của gói lồng bên trong",
+              measured >= 5 * 1024 * 1024,
+              "đo được \(measured) byte, đáng lẽ ≥ 5 MB")
+
+        try? fm.removeItem(at: dir)
+    }
+
+    /// Hai đường dẫn trỏ vào **cùng một tệp vật lý** (hard link) không phải là bản trùng:
+    /// xoá một cái chẳng giải phóng byte nào, mà người dùng lại tưởng vừa dọn được.
+    private static func testHardLinkDuplicates() {
+        print("[Duplicates] liên kết cứng")
+        let fm = FileManager.default
+        let dir = makeSandbox()
+        let a = dir.appendingPathComponent("a.bin")
+        let b = dir.appendingPathComponent("b.bin")
+        let c = dir.appendingPathComponent("c.bin")
+        let payload = Data(repeating: 7, count: 2 * 1024 * 1024)
+        try? payload.write(to: a)
+        try? fm.linkItem(at: a, to: b)          // cùng một tệp, hai tên
+        try? payload.write(to: c)               // bản sao thật
+
+        var opts = DuplicateScanner.Options()
+        opts.roots = [dir]
+        opts.minimumSize = 1024
+        let sets = DuplicateScanner().scan(options: opts, cancel: CancelToken()) { _ in }
+
+        let paths = Set(sets.flatMap { $0.files.map(\.lastPathComponent) })
+        check("không coi liên kết cứng là bản trùng", !(paths.contains("a.bin") && paths.contains("b.bin")),
+              "gộp cả a.bin lẫn b.bin vào một nhóm")
+        check("vẫn tìm ra bản sao thật", paths.contains("c.bin"))
+
+        try? fm.removeItem(at: dir)
+    }
+
+    /// Bật "chuyển vào Thùng rác" thì nội dung thư mục đệm phải đi vào Thùng rác,
+    /// còn chính thư mục vẫn ở lại (app không tự tạo lại vài thư mục đệm).
+    private static func testTrashKeepsFolder() {
+        print("[Remover] dọn ruột nhưng vào Thùng rác")
+        let fm = FileManager.default
+        let dir = makeSandbox()
+        let cacheDir = dir.appendingPathComponent("SomeApp/Caches")
+        try? fm.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        let inside = cacheDir.appendingPathComponent("blob.bin")
+        try? Data(repeating: 1, count: 4096).write(to: inside)
+
+        let item = CleanItem(url: cacheDir, size: 4096, emptyContentsOnly: true)
+        let outcome = Remover.perform(
+            Remover.Request(items: [item], moveToTrash: true, adminPrompt: ""),
+            progress: { _, _ in })
+
+        check("thư mục đệm vẫn còn", FileUtils.isDirectory(cacheDir))
+        check("ruột đã được dọn", FileUtils.children(of: cacheDir).isEmpty)
+        check("báo là đã dọn", outcome.removedCount == 1)
+        // Không thể liệt kê ~/.Trash để kiểm (macOS chặn nếu chưa có Toàn quyền truy cập đĩa),
+        // nên hỏi chính kết quả: mục này đi vào Thùng rác hay bị xoá thẳng.
+        check("tệp đi vào Thùng rác chứ không bị xoá thẳng", outcome.trashedCount == 1,
+              "trashedCount = \(outcome.trashedCount)")
+
+        try? fm.removeItem(at: dir)
     }
 }
 #endif

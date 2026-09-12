@@ -172,7 +172,7 @@ struct GroupedModuleView: View {
                          caption: store.statusText.isEmpty ? "Đang quét…" : store.statusText,
                          accent: skin.glow)
                     .padding(.bottom, 6)
-                PillButton(title: "Dừng lại", systemImage: "stop.fill") { store.cancelScan() }
+                ActionButton(title: "Dừng lại", systemImage: "stop.fill") { store.cancelScan() }
             } else {
                 ModuleIntro(title: module.title,
                             subtitle: hint,
@@ -209,7 +209,7 @@ struct GroupedModuleView: View {
                 if store.groups.isEmpty {
                     HeroHeadline(title: "Không còn gì để dọn",
                                  subtitle: "Thử lại sau vài ngày nữa nhé.") {
-                        PillButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
+                        ActionButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
                     }
                 } else {
                     ResultHeadline(selectedBytes: store.totalSelected,
@@ -243,7 +243,7 @@ struct GroupedModuleView: View {
             if !store.groups.isEmpty { cleanButton }
         }
         .overlay(alignment: .topLeading) {
-            PillButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
+            ActionButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
                 .padding(.leading, Metrics.contentPadding)
                 .padding(.top, 6)
         }
@@ -357,13 +357,16 @@ struct GroupTile: View {
             HStack(spacing: 6) {
                 Spacer(minLength: 4)
                 if group.needsFullDiskAccess {
-                    PillButton(title: "Cấp quyền", kind: .warning, action: openFullDiskAccess)
+                    ActionButton(title: "Cấp quyền", systemImage: "lock.open.fill",
+                                 kind: .attention, height: 26, action: openFullDiskAccess)
                         .fixedSize()
                 } else if group.runningBundleID != nil, let onQuitApp {
-                    PillButton(title: "Thoát", kind: .warning, action: onQuitApp)
+                    ActionButton(title: "Thoát", systemImage: "xmark.circle.fill",
+                                 kind: .attention, height: 26, action: onQuitApp)
                         .fixedSize()
                 }
-                PillButton(title: "Xem", kind: hovering ? .solid : .glass, action: onReview)
+                ActionButton(title: "Xem", trailingImage: "chevron.right",
+                             height: 26, action: onReview)
                     .fixedSize()
             }
             .padding(.top, 12)
@@ -467,7 +470,7 @@ struct GroupDetailView: View {
             .frame(maxWidth: 640)
 
             HStack {
-                PillButton(title: "Quay lại", systemImage: "chevron.left", action: onBack)
+                ActionButton(title: "Quay lại", systemImage: "chevron.left", action: onBack)
                 Spacer()
                 IconToolbar(actions: [
                     .init(icon: group.selection == .all ? "circle.slash" : "checkmark.circle",
@@ -493,10 +496,11 @@ struct GroupDetailView: View {
                 if group.needsFullDiskAccess { openFullDiskAccess() } else { onQuitApp() }
             }
             .buttonStyle(.plain)
-            .font(.system(size: 11.5, weight: .bold))
+            .font(.system(size: 11.5, weight: .semibold))
             .padding(.horizontal, 9)
             .padding(.vertical, 3)
-            .background(Capsule().fill(Color.black.opacity(0.22)))
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(Color.black.opacity(0.22)))
         }
         .foregroundStyle(.black.opacity(0.82))
         .padding(.horizontal, 12)
@@ -710,8 +714,8 @@ struct DoneScreen: View {
                     }
 
                     HStack(spacing: 10) {
-                        PillButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
-                        PillButton(title: "Xong", kind: .solid) { store.reset() }
+                        ActionButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
+                        ActionButton(title: "Xong", kind: .prominent) { store.reset() }
                     }
                 } else {
                     ScanRing(mode: store.ringMode, bytes: store.totalSelected,
@@ -747,6 +751,12 @@ struct DoneScreen: View {
 
     private func summary(_ o: CleanOutcome) -> String {
         var parts: [String] = ["\(o.removedCount) mục đã được dọn"]
+        // Nói rõ thứ nào còn lấy lại được: người dùng bật "chuyển vào Thùng rác" là để yên tâm.
+        if o.trashedCount > 0 {
+            parts.append(o.trashedCount == o.removedCount
+                         ? "tất cả đang nằm trong Thùng rác"
+                         : "\(o.trashedCount) mục nằm trong Thùng rác")
+        }
         if o.wasCancelled {
             parts.append("bạn đã huỷ nhập mật khẩu nên phần trong thư mục hệ thống được giữ nguyên")
         } else if o.usedAdmin {
