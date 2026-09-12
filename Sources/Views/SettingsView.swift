@@ -91,11 +91,6 @@ struct SettingsView: View {
                     title: "Chuyển vào Thùng rác thay vì xoá vĩnh viễn",
                     detail: "Bật thì dung lượng chỉ thực sự được giải phóng sau khi bạn đổ Thùng rác. Tệp trong thư mục hệ thống vẫn bị xoá thẳng vì Thùng rác không nhận tệp của root.",
                     isOn: $settings.moveToTrash, accent: accent)
-                SettingDivider()
-                SettingToggle(
-                    title: "Hỏi lại trước khi dọn",
-                    detail: "Hiện hộp xác nhận kèm số mục và dung lượng trước mỗi lần xoá.",
-                    isOn: $settings.confirmBeforeClean, accent: accent)
             }
 
             SettingCard {

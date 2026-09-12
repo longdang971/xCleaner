@@ -21,6 +21,14 @@ Học theo CleanMyMac 5 nhưng dựng lại hoàn toàn bằng SwiftUI, không d
   Màu phải đặc, pha trong suốt là nền phía sau làm nút xỉn đi ngay.
 - **Ba chặng thao tác**: màn khởi đầu (khối 3D + nút tròn) → lưới thẻ tóm tắt → danh sách chi
   tiết khi bấm "Xem". Nhờ vậy màn kết quả luôn gọn dù nhóm có hàng nghìn tệp.
+- **Bốn màn cùng một khung**: đang quét, đang dọn, dọn xong và lưới kết quả dùng chung con số
+  lớn ở đỉnh, lưới thẻ ở giữa và nút tròn ở đáy. Đi hết một lượt, người dùng thấy các ô đổi
+  nội dung tại chỗ chứ không phải bốn trang khác nhau nối đuôi.
+- **Không có bước xác nhận trước khi dọn**: mọi mục đều nhìn thấy và bỏ chọn được ngay trên
+  màn kết quả, nên hộp thoại hỏi lại chỉ là một cú bấm thừa. Mục có rủi ro (tự động điền,
+  cookie) cố tình **không** tick sẵn.
+- **Vào là thấy việc**: mục Gỡ ứng dụng và Khởi động cùng máy chỉ đọc danh sách chứ không xoá
+  gì, nên chúng vào thẳng danh sách, không có màn giới thiệu và cũng không có màn chờ riêng.
 
 ## Các mục
 
@@ -74,6 +82,11 @@ XCLEANER_SELFTEST=1 ./xCleaner.app/Contents/MacOS/xCleaner
 XCLEANER_SHOT=/tmp/a.png XCLEANER_SHOT_DELAY=5 XCLEANER_SHOT_QUIT=1 \
 XCLEANER_MODULE=privacy XCLEANER_SHOT_ACTION=scan \
 XCLEANER_SIDEBAR=expanded XCLEANER_REVIEW=1 \
+  ./xCleaner.app/Contents/MacOS/xCleaner
+
+# Dựng sẵn màn "đã dọn xong" bằng dữ liệu giả (không quét, không xoá gì)
+XCLEANER_SHOT=/tmp/b.png XCLEANER_SHOT_DELAY=4 XCLEANER_SHOT_QUIT=1 \
+XCLEANER_DEMO_DONE=fail XCLEANER_DEMO_FAILURES=1 \
   ./xCleaner.app/Contents/MacOS/xCleaner
 
 # Thử luồng xin quyền root mà không xoá gì
