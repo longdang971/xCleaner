@@ -121,6 +121,11 @@ struct GroupedModuleView: View {
                store.phase == .results {
                 store.debugShowQuitDialog()
             }
+            if let ids = ProcessInfo.processInfo.environment["XCLEANER_DEMO_EMPTY"],
+               store.phase == .results {
+                store.debugEmptyCards(ids == "1" ? ["misc", "trash", "browsers"]
+                                                 : ids.split(separator: ",").map(String.init))
+            }
             if let want = ProcessInfo.processInfo.environment["XCLEANER_REVIEW"],
                store.phase == .results, reviewing == nil {
                 reviewing = want == "1" ? store.groups.first?.id
@@ -175,14 +180,16 @@ struct GroupedModuleView: View {
     private var resultsScreen: some View {
         VStack(spacing: 0) {
             Group {
-                if store.groups.isEmpty {
-                    HeroHeadline(title: "Không còn gì để dọn",
-                                 subtitle: "Thử lại sau vài ngày nữa nhé.") {
-                        ActionButton(title: "Quét lại", systemImage: "arrow.clockwise") { store.scan() }
-                    }
-                } else {
+                // Lưới thẻ vẫn đứng đó kể cả khi không có gì để dọn, nên tiêu đề là chỗ duy
+                // nhất nói ra điều đó.
+                if store.hasResults {
                     ResultHeadline(selectedBytes: store.totalSelected,
                                    totalBytes: store.totalFound) {
+                        EmptyView()
+                    }
+                } else {
+                    HeroHeadline(title: "Không còn gì để dọn",
+                                 subtitle: "Máy đang sạch — thử lại sau vài ngày nữa nhé.") {
                         EmptyView()
                     }
                 }
@@ -290,10 +297,14 @@ struct GroupTile: View {
 
     @State private var hovering = false
 
+    /// Thẻ không tìm thấy gì vẫn ở lại lưới, chỉ đổi giọng: không ô tick, không nút "Xem",
+    /// chỉ một câu nói rằng chỗ đó đã sạch.
+    private var isEmpty: Bool { group.items.isEmpty && !group.needsFullDiskAccess }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                TriStateBox(state: group.selection, action: onToggle)
+                if !isEmpty { TriStateBox(state: group.selection, action: onToggle) }
                 Text(group.title)
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.white)
@@ -305,17 +316,13 @@ struct GroupTile: View {
             Spacer(minLength: 10)
 
             // Chưa chọn gì thì đưa tổng ra, mờ hơn — hiện "0 KB" chỉ làm người dùng tưởng thẻ rỗng.
-            Text(group.items.isEmpty && group.needsFullDiskAccess
-                 ? "Cần quyền"
-                 : Fmt.size(group.selectedSize > 0 ? group.selectedSize : group.totalSize))
+            Text(headlineText)
                 .font(.system(size: 21, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.white.opacity(group.selectedSize > 0 ? 1 : 0.55))
                 .contentTransition(.numericText())
                 .lineLimit(1).minimumScaleFactor(0.7)
 
-            Text(group.selectedSize > 0
-                 ? "\(group.items.count) mục · \(group.subtitle)"
-                 : "chưa chọn mục nào · \(group.items.count) mục · \(group.subtitle)")
+            Text(captionText)
                 .font(.system(size: 11))
                 .foregroundStyle(Color.white.opacity(0.78))
                 .lineLimit(2)
@@ -333,18 +340,33 @@ struct GroupTile: View {
                                  kind: .attention, height: 26, action: onQuitApp)
                         .fixedSize()
                 }
-                ActionButton(title: "Xem", trailingImage: "chevron.right",
-                             height: 26, action: onReview)
-                    .fixedSize()
+                if !isEmpty {
+                    ActionButton(title: "Xem", trailingImage: "chevron.right",
+                                 height: 26, action: onReview)
+                        .fixedSize()
+                }
             }
             .padding(.top, 12)
         }
         .padding(16)
         .frame(height: 200, alignment: .topLeading)
         .tileSurface(gem: gem, icon: group.icon, bundleID: group.appBundleID,
-                     highlighted: hovering)
+                     highlighted: hovering && !isEmpty)
+        .opacity(isEmpty ? 0.72 : 1)
         .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
-        .onTapGesture(perform: onReview)
+        .onTapGesture { if !isEmpty { onReview() } }
+    }
+
+    private var headlineText: String {
+        if isEmpty { return "Sạch" }
+        if group.items.isEmpty && group.needsFullDiskAccess { return "Cần quyền" }
+        return Fmt.size(group.selectedSize > 0 ? group.selectedSize : group.totalSize)
+    }
+
+    private var captionText: String {
+        if isEmpty { return "không có gì để dọn · \(group.subtitle)" }
+        if group.selectedSize > 0 { return "\(group.items.count) mục · \(group.subtitle)" }
+        return "chưa chọn mục nào · \(group.items.count) mục · \(group.subtitle)"
     }
 }
 

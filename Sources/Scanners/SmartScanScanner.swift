@@ -8,8 +8,9 @@ import Foundation
 /// còn chi tiết thì bấm "Xem" là có.
 struct SmartScanScanner: ModuleScanner {
 
-    /// Một chặng của lần quét. Chặng nào chắc chắn không có gì thì không hiện ô,
-    /// nếu không người dùng sẽ thấy sáu ô lúc quét rồi chỉ còn năm thẻ lúc xong.
+    /// Một chặng của lần quét. Luôn đủ năm, kể cả chặng không tìm thấy gì: người dùng cần
+    /// thấy xCleaner đã ngó qua chỗ đó rồi và chỗ đó sạch, chứ không phải đoán xem vì sao
+    /// lần này chỉ có ba thẻ còn lần trước có năm.
     private enum Kind: CaseIterable {
         case cache, logs, browsers, trash, misc
 
@@ -39,54 +40,13 @@ struct SmartScanScanner: ModuleScanner {
         }
     }
 
-    /// Chỉ đếm xem thư mục có gì không — không đo dung lượng, nên rất nhanh.
-    private static func hasContent(_ url: URL) -> Bool {
-        guard let items = try? FileManager.default.contentsOfDirectory(atPath: url.path) else {
-            return false
-        }
-        return items.contains { !$0.hasPrefix(".") }
-    }
+    /// Thứ tự này phải đúng bằng thứ tự `scan(cancel:progress:)` chạy qua các chặng:
+    /// rác hệ thống (đệm → nhật ký → mục khác) rồi thùng rác rồi trình duyệt. Danh sách vừa là
+    /// thứ tự các ô hiện lên vừa là thước đo của vòng phần trăm, nên xếp sai một chỗ là vòng
+    /// tròn chạy lùi giữa chừng.
+    private static let order: [Kind] = [.cache, .logs, .misc, .trash, .browsers]
 
-    /// Bị macOS chặn đọc cũng tính là "có thể có gì đó" — phải hiện ô để còn mời cấp quyền.
-    private static func trashHasContent() -> Bool {
-        let state = FileUtils.directoryState(FileUtils.homePath(".Trash"))
-        if state == .hasItems || state == .blocked { return true }
-        let uid = getuid()
-        for vol in FileUtils.mountedVolumes() where vol.path != "/" {
-            if hasContent(vol.appendingPathComponent(".Trashes/\(uid)")) { return true }
-        }
-        return false
-    }
-
-    /// Thứ tự ở đây phải đúng bằng thứ tự `scan(cancel:progress:)` chạy qua các chặng:
-    /// rác hệ thống (đệm → nhật ký → mục khác) rồi thùng rác rồi trình duyệt. Danh sách này
-    /// vừa là thứ tự các ô hiện lên vừa là thước đo của vòng phần trăm, nên xếp sai một chỗ
-    /// là vòng tròn chạy lùi giữa chừng.
-    private static func availableKinds() -> [Kind] {
-        var kinds: [Kind] = []
-        if hasContent(FileUtils.homePath("Library/Caches"))
-            || hasContent(URL(fileURLWithPath: "/Library/Caches")) { kinds.append(.cache) }
-        if hasContent(FileUtils.homePath("Library/Logs"))
-            || hasContent(URL(fileURLWithPath: "/Library/Logs"))
-            || hasContent(FileUtils.homePath("Library/Logs/DiagnosticReports")) {
-            kinds.append(.logs)
-        }
-        // Thư mục danh sách gần đây bị macOS chặn cũng tính là có việc phải làm:
-        // người dùng cần thấy ô đó để biết mà cấp quyền.
-        let recents = FileUtils.homePath("Library/Application Support/com.apple.sharedfilelist")
-        if hasContent(FileUtils.homePath("Library/Saved Application State"))
-            || hasContent(recents)
-            || FileUtils.directoryState(recents) == .blocked {
-            kinds.append(.misc)
-        }
-        if trashHasContent() || hasContent(FileUtils.homePath("Downloads")) {
-            kinds.append(.trash)
-        }
-        if !BrowserPrivacyScanner.installedBrowsers().isEmpty { kinds.append(.browsers) }
-        return kinds
-    }
-
-    var stages: [ScanStage] { Self.availableKinds().map(\.stage) }
+    var stages: [ScanStage] { Self.order.map(\.stage) }
 
     /// Chặng nội bộ của bộ quét rác hệ thống ứng với loại nào ở đây.
     /// Hai loại nhật ký gộp về một ô, phần công cụ lập trình bị lọc nên không có ô riêng.
@@ -108,7 +68,7 @@ struct SmartScanScanner: ModuleScanner {
 
     func scan(cancel: CancelToken, progress: @escaping (ScanProgress) -> Void) -> [CleanGroup] {
         var bytes: Int64 = 0
-        let kinds = Self.availableKinds()
+        let kinds = Self.order
         let stage = StageReporter(weights: kinds.map(\.weight), emit: progress)
         func index(_ k: Kind) -> Int? { kinds.firstIndex(of: k) }
 
@@ -155,39 +115,51 @@ struct SmartScanScanner: ModuleScanner {
             stage.working(p.message, within: p.fraction)
         }
 
-        var result: [CleanGroup] = []
-        if let caches = mergedCaches(from: junk) { result.append(caches) }
-        if let logs = mergedLogs(from: junk) { result.append(logs) }
-        if let bin = mergedTrash(from: trash) { result.append(bin) }
-        if var misc = junk.first(where: { $0.id == "misc" }) {
-            misc.title = "Mục khác"      // tên gốc dài quá so với bề ngang một thẻ
-            result.append(misc)
-        }
-        if let web = mergedBrowsers(from: browsers) {
-            bytes += web.totalSize
-            if let bi = index(.browsers) { stage.finish(bi, bytes: web.totalSize) }
-            result.append(web)
-        } else if let bi = index(.browsers) {
-            stage.finish(bi, bytes: 0)
-        }
+        // Luôn đủ năm thẻ, kể cả thẻ không tìm thấy gì. Thẻ trống là một câu trả lời
+        // ("chỗ này sạch"), còn thẻ biến mất thì chỉ khiến người dùng tự hỏi lần này app có
+        // quét chỗ đó không.
+        var result: [CleanGroup] = [mergedCaches(from: junk),
+                                    mergedLogs(from: junk),
+                                    mergedTrash(from: trash),
+                                    misc(from: junk)]
+        let web = mergedBrowsers(from: browsers)
+        bytes += web.totalSize
+        if let bi = index(.browsers) { stage.finish(bi, bytes: web.totalSize) }
+        result.append(web)
 
-        // Thẻ nào nhiều dung lượng nhất lên trước, để hàng đầu luôn là thứ đáng nhìn nhất.
+        // Thẻ nào nhiều dung lượng nhất lên trước, để hàng đầu luôn là thứ đáng nhìn nhất;
+        // thẻ trống vì thế tự rơi xuống cuối.
         result.sort { $0.totalSize > $1.totalSize }
 
-        // Trừ hai thẻ này: đổi chỗ cho nhau theo ý người dùng.
+        // Trừ hai thẻ này: đổi chỗ cho nhau theo ý người dùng. Chỉ đổi khi cả hai đều có mục,
+        // không thì việc đổi chỗ lại kéo một thẻ trống lên trên thẻ còn dọn được.
         if let a = result.firstIndex(where: { $0.id == "logs" }),
-           let b = result.firstIndex(where: { $0.id == "misc" }) {
+           let b = result.firstIndex(where: { $0.id == "misc" }),
+           !result[a].items.isEmpty, !result[b].items.isEmpty {
             result.swapAt(a, b)
         }
 
         stage.done()
-        // Nhóm rỗng thì bỏ, trừ khi nó rỗng chỉ vì macOS chặn đọc — cái đó phải cho người dùng thấy.
-        return result.filter { !$0.items.isEmpty || $0.needsFullDiskAccess }
+        return result
+    }
+
+    /// Thẻ "Mục khác" — bộ quét rác hệ thống chỉ dựng nhóm này khi có gì đó.
+    private func misc(from groups: [CleanGroup]) -> CleanGroup {
+        guard var group = groups.first(where: { $0.id == "misc" }) else {
+            return CleanGroup(id: "misc",
+                              title: "Mục khác",
+                              subtitle: "Vị trí cửa sổ đang mở và danh sách mở gần đây của các app",
+                              icon: "macwindow",
+                              safety: .review,
+                              items: [])
+        }
+        group.title = "Mục khác"     // tên gốc dài quá so với bề ngang một thẻ
+        return group
     }
 
     // MARK: - Gộp bộ nhớ đệm
 
-    private func mergedCaches(from groups: [CleanGroup]) -> CleanGroup? {
+    private func mergedCaches(from groups: [CleanGroup]) -> CleanGroup {
         let user = groups.first { $0.id == "user-cache" }
         let system = groups.first { $0.id == "sys-cache" }
 
@@ -196,7 +168,6 @@ struct SmartScanScanner: ModuleScanner {
         items += (user?.items ?? []).map { $0.inCategory("Bộ nhớ đệm ứng dụng") }
         items += (system?.items ?? []).map { $0.inCategory("Bộ nhớ đệm hệ thống") }
         items += (dev?.items ?? []).map { $0.inCategory("Công cụ lập trình") }
-        guard !items.isEmpty else { return nil }
 
         return CleanGroup(id: "cache",
                           title: "Bộ nhớ đệm",
@@ -208,7 +179,7 @@ struct SmartScanScanner: ModuleScanner {
 
     // MARK: - Gộp nhật ký
 
-    private func mergedLogs(from groups: [CleanGroup]) -> CleanGroup? {
+    private func mergedLogs(from groups: [CleanGroup]) -> CleanGroup {
         let user = groups.first { $0.id == "user-logs" }
         let system = groups.first { $0.id == "sys-logs" }
         let crash = groups.first { $0.id == "crash" }
@@ -217,7 +188,6 @@ struct SmartScanScanner: ModuleScanner {
         items += (user?.items ?? []).map { $0.inCategory("Nhật ký người dùng") }
         items += (system?.items ?? []).map { $0.inCategory("Nhật ký hệ thống") }
         items += (crash?.items ?? []).map { $0.inCategory("Báo cáo sự cố") }
-        guard !items.isEmpty else { return nil }
 
         return CleanGroup(id: "logs",
                           title: "Nhật ký & báo cáo",
@@ -229,7 +199,7 @@ struct SmartScanScanner: ModuleScanner {
 
     // MARK: - Gộp thùng rác và thư mục tải về
 
-    private func mergedTrash(from groups: [CleanGroup]) -> CleanGroup? {
+    private func mergedTrash(from groups: [CleanGroup]) -> CleanGroup {
         // Mỗi nhóm con thành một phần, giữ nguyên mục nào được tick sẵn mục nào không.
         let parts: [(String, String)] = [("trash", "Thùng rác"),
                                          ("installers", "Bộ cài đã dùng xong"),
@@ -243,7 +213,6 @@ struct SmartScanScanner: ModuleScanner {
             if g.needsFullDiskAccess { blocked = true }
             items += g.items.map { $0.inCategory(label) }
         }
-        guard !items.isEmpty || blocked else { return nil }
 
         return CleanGroup(id: "trash",
                           title: "Thùng rác & Tải về",
@@ -258,9 +227,7 @@ struct SmartScanScanner: ModuleScanner {
 
     // MARK: - Gộp trình duyệt
 
-    private func mergedBrowsers(from groups: [CleanGroup]) -> CleanGroup? {
-        guard !groups.isEmpty else { return nil }
-
+    private func mergedBrowsers(from groups: [CleanGroup]) -> CleanGroup {
         var items: [CleanItem] = []
         var appIDs: [String: String] = [:]
         var running: [String] = []
@@ -278,14 +245,14 @@ struct SmartScanScanner: ModuleScanner {
             if g.runningBundleID != nil { running.append(g.title) }
             if g.needsFullDiskAccess { blocked = true }
         }
-        guard !items.isEmpty else { return nil }
 
         let cacheSize = items
             .filter { $0.isSelected }
             .reduce(0) { $0 + $1.size }
 
         // Phụ đề phải ngắn: thẻ chỉ có hai dòng, còn cảnh báo đã có nhãn và nút riêng lo.
-        var subtitle = groups.count == 1 ? groups[0].title : "\(groups.count) trình duyệt"
+        var subtitle = groups.count == 1 ? groups[0].title
+            : (groups.isEmpty ? "Không tìm thấy trình duyệt nào" : "\(groups.count) trình duyệt")
         if !running.isEmpty { subtitle += " · \(running.count) đang mở" }
         _ = cacheSize
 

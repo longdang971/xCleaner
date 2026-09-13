@@ -93,6 +93,47 @@ enum PrivilegedRunner {
         return report
     }
 
+    /// Xoá hẳn nhóm này và dọn ruột nhóm kia trong **một** lần hỏi mật khẩu.
+    ///
+    /// Gọi `remove` rồi `emptyContents` là hai lệnh, mà mỗi lệnh dựng một `AuthorizationRef`
+    /// mới nên người dùng phải nhập mật khẩu hai lần cho cùng một cú bấm "Dọn".
+    @discardableResult
+    static func removeAndEmpty(remove paths: [URL],
+                               emptyContents dirs: [URL],
+                               prompt: String) throws -> Report {
+        let (toRemove, rejectedRemove) = SafetyGuard.partition(paths)
+        let (toEmpty, rejectedEmpty) = SafetyGuard.partition(dirs)
+        for (url, reason) in rejectedRemove + rejectedEmpty {
+            NSLog("[xCleaner] SafetyGuard chặn (admin): %@ — %@", url.path, reason.localizedDescription)
+        }
+        guard !toRemove.isEmpty || !toEmpty.isEmpty else { return Report() }
+
+        var manifests: [URL] = []
+        defer { for m in manifests { try? FileManager.default.removeItem(at: m) } }
+
+        var parts: [String] = []
+        if !toRemove.isEmpty {
+            let m = try writeManifest(toRemove)
+            manifests.append(m)
+            parts.append("/usr/bin/xargs -0 /bin/rm -rf -- < \(shellQuote(m.path)) 2>&1")
+        }
+        if !toEmpty.isEmpty {
+            let m = try writeManifest(toEmpty)
+            manifests.append(m)
+            // `-mindepth 1` giữ lại chính thư mục; `-maxdepth 1` để `rm -rf` lo phần bên trong.
+            parts.append("/usr/bin/xargs -0 -I DIR /usr/bin/find DIR -mindepth 1 -maxdepth 1 "
+                         + "-exec /bin/rm -rf -- {} + < \(shellQuote(m.path)) 2>&1")
+        }
+        parts.append("/bin/rm -f " + manifests.map { shellQuote($0.path) }.joined(separator: " "))
+        parts.append("exit 0")
+
+        let out = try runAsAdmin(command: parts.joined(separator: "; "), prompt: prompt)
+        var report = Report(stdout: out)
+        report.errorLines = out.split(separator: "\n").map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return report
+    }
+
     /// Kiểm tra nhanh xem người dùng có quyền ghi trực tiếp không (để biết có cần hỏi mật khẩu).
     static func needsAdmin(for url: URL) -> Bool {
         let parent = url.deletingLastPathComponent().path

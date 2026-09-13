@@ -167,6 +167,10 @@ final class ScanStore: ObservableObject {
     }
 
     // Tổng hợp
+    /// Lần quét có tìm ra thứ gì đáng để người dùng động tay không.
+    /// Không dùng `groups.isEmpty` được nữa: Quét thông minh luôn trả về đủ năm thẻ, thẻ nào
+    /// không có gì thì rỗng chứ không biến mất.
+    var hasResults: Bool { groups.contains { !$0.items.isEmpty || $0.needsFullDiskAccess } }
     var totalFound: Int64 { groups.reduce(0) { $0 + $1.totalSize } }
     var totalSelected: Int64 { groups.reduce(0) { $0 + $1.selectedSize } }
     var selectedItems: [CleanItem] { groups.flatMap { $0.items.filter(\.isSelected) } }
@@ -238,13 +242,14 @@ final class ScanStore: ObservableObject {
                     g = result
                     restored = 0
                 }
+                let foundSomething = g.contains { !$0.items.isEmpty || $0.needsFullDiskAccess }
                 withAnimation(Motion.standard) {
                     self.restoredCount = restored
                     self.groups = g
                     self.liveBytes = g.reduce(0) { $0 + $1.totalSize }
-                    self.phase = token.isCancelled && g.isEmpty ? .idle : .results
+                    self.phase = token.isCancelled && !foundSomething ? .idle : .results
                     self.smoother.complete()
-                    self.statusText = g.isEmpty ? "Không tìm thấy gì để dọn" : "Sẵn sàng dọn"
+                    self.statusText = foundSomething ? "Sẵn sàng dọn" : "Không tìm thấy gì để dọn"
                 }
             }
         }
@@ -473,13 +478,16 @@ final class ScanStore: ObservableObject {
                     self.currentStage = nil
                     self.statusText = result.wasCancelled && result.removedCount == 0
                         ? "Đã huỷ" : "Đã dọn xong"
+                    // Bỏ khỏi danh sách những mục đã thật sự sạch. Mục "dọn ruột" giữ lại
+                    // chính thư mục nên `exists` vẫn đúng — phải hỏi xem nó còn gì bên trong
+                    // không, nếu không quay lại màn kết quả vẫn thấy nguyên danh sách cũ.
                     let removed = Set(ordered.map(\.url.path))
                     for gi in self.groups.indices {
                         self.groups[gi].items.removeAll {
-                            removed.contains($0.url.path) && !FileUtils.exists($0.url)
+                            removed.contains($0.url.path) && Remover.isCleared($0)
                         }
                     }
-                    self.groups.removeAll { $0.items.isEmpty }
+                    // Thẻ rỗng thì ở lại: năm thẻ của Quét thông minh luôn có mặt.
                     self.liveBytes = result.freedBytes
                 }
             }
@@ -505,6 +513,17 @@ final class ScanStore: ObservableObject {
     }
 
     #if DEBUG
+    /// Làm rỗng vài thẻ để xem bố cục lúc một mục không tìm thấy gì. Đi đường thật thì phải
+    /// có sẵn một máy đã sạch đúng mấy mục đó mới nhìn được.
+    func debugEmptyCards(_ ids: [String]) {
+        withAnimation(Motion.standard) {
+            for gi in groups.indices where ids.contains(groups[gi].id) {
+                groups[gi].items = []
+                groups[gi].needsFullDiskAccess = false
+            }
+        }
+    }
+
     /// Dựng hộp thoại "ứng dụng đang mở" để xem giao diện — không dọn gì cả.
     func debugShowQuitDialog() {
         let running = Self.runningApps(in: groups)
@@ -596,11 +615,12 @@ final class ScanStore: ObservableObject {
     #endif
 
     func reset() {
-        phase = groups.isEmpty ? .idle : .results
+        let found = hasResults
+        phase = found ? .results : .idle
         outcome = nil
-        if groups.isEmpty { smoother.reset() } else { smoother.complete() }
+        if found { smoother.complete() } else { smoother.reset() }
         liveBytes = groups.reduce(0) { $0 + $1.totalSize }
-        statusText = groups.isEmpty ? "" : "Sẵn sàng dọn"
+        statusText = found ? "Sẵn sàng dọn" : ""
     }
 }
 

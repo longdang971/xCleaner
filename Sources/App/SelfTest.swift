@@ -29,6 +29,9 @@ enum SelfTest {
         testNestedPackageSize()
         testHardLinkDuplicates()
         testTrashKeepsFolder()
+        testCleanAccounting()
+        testBlockedEmptyContents()
+        testSmartScanAlwaysFiveCards()
         testUpdater()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
@@ -148,6 +151,89 @@ enum SelfTest {
         check("không báo lỗi", outcome.failures.isEmpty)
         check("thư mục vẫn còn", FileUtils.isDirectory(keep))
         check("ruột đã rỗng", FileUtils.children(of: keep).isEmpty)
+    }
+
+    /// Con số "đã giải phóng" và tiếng báo cho từng mục phải khớp với thực tế trên đĩa.
+    ///
+    /// Bản trước cộng dung lượng của mọi mục được chọn, nên `~/Library/Caches/Homebrew` nằm
+    /// cả trong thẻ "Bộ nhớ đệm" lẫn thẻ "Công cụ lập trình" được tính hai lần; mục con của
+    /// một thư mục cũng đang bị xoá cũng vậy. Mục đã biến mất từ trước thì không được báo gì
+    /// cả, nên màn "đang dọn" đếm hụt và trông như app bỏ sót.
+    private static func testCleanAccounting() {
+        print("[Remover] đếm đúng mục và dung lượng")
+        let dir = makeSandbox()
+        let fm = FileManager.default
+
+        let dup = dir.appendingPathComponent("trùng")
+        try? fm.createDirectory(at: dup, withIntermediateDirectories: true)
+        fm.createFile(atPath: dup.appendingPathComponent("x.bin").path,
+                      contents: Data(repeating: 0x45, count: 2048))
+
+        let parent = dir.appendingPathComponent("cha")
+        let child = parent.appendingPathComponent("con")
+        try? fm.createDirectory(at: child, withIntermediateDirectories: true)
+        fm.createFile(atPath: child.appendingPathComponent("y.bin").path,
+                      contents: Data(repeating: 0x46, count: 4096))
+
+        let ghost = dir.appendingPathComponent("đã-biến-mất")
+
+        let items = [CleanItem(url: dup, name: "trùng #1", size: 2048),
+                     CleanItem(url: dup, name: "trùng #2", size: 2048),
+                     CleanItem(url: parent, name: "cha", size: 4096),
+                     CleanItem(url: child, name: "con", size: 4096),
+                     CleanItem(url: ghost, name: "ma", size: 1024)]
+
+        var finished: [String] = []
+        let outcome = Remover.perform(
+            Remover.Request(items: items, moveToTrash: false, adminPrompt: "test"),
+            progress: { _, _ in },
+            itemFinished: { item, _ in finished.append(item.name) })
+
+        check("mỗi mục được báo đúng một lần", finished.count == items.count,
+              "(\(finished.count)/\(items.count): \(finished.joined(separator: ", ")))")
+        check("không cộng đôi dung lượng", outcome.freedBytes == 2048 + 4096,
+              "(\(outcome.freedBytes) thay vì \(2048 + 4096))")
+        check("đếm đủ số mục đã dọn", outcome.removedCount == items.count,
+              "(\(outcome.removedCount))")
+        check("không báo lỗi", outcome.failures.isEmpty,
+              "(\(outcome.failures.map(\.reason).joined(separator: "; ")))")
+        check("cả hai thư mục đã biến mất", !FileUtils.exists(dup) && !FileUtils.exists(parent))
+    }
+
+    /// Thư mục "dọn ruột" mà macOS chặn đọc thì tuyệt đối không được báo là đã dọn xong.
+    ///
+    /// `FileUtils.children` trả về mảng rỗng cho cả thư mục sạch lẫn thư mục cấm đọc. Bản
+    /// trước không phân biệt hai thứ đó nên im lặng tính là xong, còn người dùng quét lại thì
+    /// thấy mọi thứ y nguyên — đúng cái cảm giác "app dọn sót".
+    private static func testBlockedEmptyContents() {
+        print("[Remover] thư mục cấm đọc không được coi là đã dọn")
+        let dir = makeSandbox()
+        let fm = FileManager.default
+        let blocked = dir.appendingPathComponent("cấm-đọc")
+        try? fm.createDirectory(at: blocked, withIntermediateDirectories: true)
+        fm.createFile(atPath: blocked.appendingPathComponent("bí-mật.bin").path,
+                      contents: Data(repeating: 0x47, count: 4096))
+        chmod(blocked.path, 0o000)
+        defer { chmod(blocked.path, 0o700) }
+
+        check("directoryState nhận ra bị chặn", FileUtils.directoryState(blocked) == .blocked)
+        check("isCleared không tin thư mục cấm đọc là sạch",
+              !Remover.isCleared(CleanItem(url: blocked, size: 4096, emptyContentsOnly: true)))
+    }
+
+    /// Quét thông minh luôn có đủ năm chặng và năm thẻ, kể cả khi chặng đó chẳng tìm thấy gì.
+    private static func testSmartScanAlwaysFiveCards() {
+        print("[SmartScan] luôn đủ năm thẻ")
+        let ids = ["cache", "logs", "misc", "trash", "browsers"]
+        let stages = SmartScanScanner().stages
+        check("có đúng năm chặng", stages.count == 5, "(\(stages.count))")
+        check("đúng năm chặng cần có", Set(stages.map(\.id)) == Set(ids),
+              "(\(stages.map(\.id).joined(separator: ", ")))")
+
+        let groups = SmartScanScanner().scan(cancel: CancelToken()) { _ in }
+        check("có đúng năm thẻ", groups.count == 5, "(\(groups.count))")
+        check("đúng năm thẻ cần có", Set(groups.map(\.id)) == Set(ids),
+              "(\(groups.map(\.id).joined(separator: ", ")))")
     }
 
     // MARK: Nhớ lựa chọn
