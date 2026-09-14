@@ -102,6 +102,9 @@ enum Remover {
             }
 
             let targets: [URL] = item.emptyContentsOnly ? FileUtils.children(of: item.url) : [item.url]
+            // Thư mục đệm tự rỗng từ lúc quét tới giờ (app tự dọn) thì mục vẫn tính là xong,
+            // nhưng không được khoe dung lượng đo lúc quét như thể chính mình vừa giải phóng.
+            let nothingToFree = item.emptyContentsOnly && targets.isEmpty
             var itemFailed = false
             var deniedTarget = false
             var trashed = 0
@@ -127,7 +130,9 @@ enum Remover {
                         itemFailed = true
                         break
                     }
-                    if fm.fileExists(atPath: t.path) {
+                    // Chỉ bỏ qua lỗi khi chắc chắn thứ đó đã không còn. `fileExists` báo `false`
+                    // cả khi chỉ là không được nhìn — tin nó là nuốt mất một lần xoá hỏng.
+                    if !FileUtils.isGone(t) {
                         outcome.failures.append((t, ns.localizedDescription))
                         itemFailed = true
                     }
@@ -152,7 +157,7 @@ enum Remover {
 
             if !itemFailed {
                 outcome.removedCount += 1
-                outcome.freedBytes += item.size
+                if !nothingToFree { outcome.freedBytes += item.size }
                 if trashed > 0 { outcome.trashedCount += 1 }
             }
             finish(item, !itemFailed)
@@ -186,12 +191,13 @@ enum Remover {
                     // Root bảo sạch thì vẫn phải hợp với thứ app tự nhìn thấy — trừ khi app
                     // không được phép nhìn, lúc đó lời của root là tất cả những gì ta có.
                     let appAgrees = FileUtils.directoryState(item.url) == .blocked || isCleared(item)
-                    let gone = report.executed && !stillThere.contains(path) && appAgrees
+                    let tried = report.attempted.contains(path)
+                    let gone = tried && !stillThere.contains(path) && appAgrees
                     if gone {
                         outcome.removedCount += 1
                         outcome.freedBytes += item.size
                     } else {
-                        if report.executed {
+                        if tried {
                             // Root đã chạy và tự soi lại mà vẫn còn: lần sau cũng thế, nhớ lại
                             // để bộ quét thôi mời người dùng dọn một thứ không dọn được.
                             UndeletableMemory.shared.record(item.url)
@@ -249,7 +255,7 @@ enum Remover {
     /// Mục này đã thật sự sạch chưa — hỏi đĩa chứ không tin vào việc lệnh xoá im lặng.
     /// Thư mục đọc không được trả về `false`: không đọc được thì không chứng minh được gì.
     static func isCleared(_ item: CleanItem) -> Bool {
-        guard item.emptyContentsOnly else { return !FileUtils.exists(item.url) }
+        guard item.emptyContentsOnly else { return FileUtils.isGone(item.url) }
         switch FileUtils.directoryState(item.url) {
         case .missing, .empty: return true
         case .hasItems, .blocked: return false

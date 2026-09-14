@@ -130,11 +130,11 @@ enum SafetyGuard {
         guard inAllowed else { return .outsideHomeAndAllowlist(path) }
 
         let fm = FileManager.default
-        var isDir: ObjCBool = false
-        let exists = fm.fileExists(atPath: path, isDirectory: &isDir)
-        // fileExists đi theo symlink; kiểm tra thêm bằng lstat cho liên kết hỏng.
         let isSymlink = (try? fm.attributesOfItem(atPath: path)[.type] as? FileAttributeType) == .typeSymbolicLink
-        if requireExists && !exists && !isSymlink { return .notExist(path) }
+        // Chỉ "không tồn tại" khi lstat nói thế. Không được phép nhìn thì KHÔNG phải không tồn tại:
+        // trước đây mục nằm sau hàng rào quyền bị trả về `.notExist`, Remover coi đó là đã dọn,
+        // còn đợt chạy root thì lọc nó ra khỏi danh sách xoá — nó chẳng bao giờ bị đụng tới.
+        if requireExists && FileUtils.presence(std) == .absent { return .notExist(path) }
 
         // Symlink thì chỉ xoá chính liên kết, nhưng nếu nó trỏ vào vùng cấm thì bỏ hẳn cho chắc.
         if isSymlink {

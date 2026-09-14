@@ -34,6 +34,7 @@ enum SelfTest {
         testSmartScanAlwaysFiveCards()
         testUndeletableMemory()
         testTrashOfTrash()
+        testHiddenIsNotGone()
         testUpdater()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
@@ -299,6 +300,47 @@ enum SelfTest {
         check("báo đã dọn", outcome.removedCount == 1, "(\(outcome.removedCount))")
         check("không báo lỗi", outcome.failures.isEmpty)
         try? fm.removeItem(at: f)
+    }
+
+    /// "Không được nhìn" không bao giờ được hiểu thành "đã xoá".
+    ///
+    /// `fileExists` trả về `false` cho tệp còn nguyên nằm trong thư mục app không được đi vào,
+    /// và cho liên kết hỏng vẫn nằm trên đĩa. Engine từng kết luận "đã dọn" bằng chính nó.
+    private static func testHiddenIsNotGone() {
+        print("[Remover] không được nhìn thì không phải đã xoá")
+        let dir = makeSandbox()
+        let fm = FileManager.default
+
+        let locked = dir.appendingPathComponent("khoá")
+        try? fm.createDirectory(at: locked, withIntermediateDirectories: true)
+        let inside = locked.appendingPathComponent("còn-nguyên.bin")
+        fm.createFile(atPath: inside.path, contents: Data(repeating: 0x4B, count: 4096))
+        chmod(locked.path, 0o000)
+        defer { chmod(locked.path, 0o700) }
+
+        check("tệp trong thư mục khoá: không phải 'không có'",
+              FileUtils.presence(inside) == .unknown, "(\(FileUtils.presence(inside)))")
+        check("tệp trong thư mục khoá: không coi là đã xoá", !FileUtils.isGone(inside))
+        var saysMissing = false
+        if case .notExist? = SafetyGuard.validate(inside) { saysMissing = true }
+        check("hàng rào an toàn không báo 'không tồn tại'", !saysMissing)
+        check("isCleared không tin là đã sạch",
+              !Remover.isCleared(CleanItem(url: inside, size: 4096, isDirectory: false)))
+        let lockedChild = locked.appendingPathComponent("thư-mục-con")
+        check("thư mục con của thư mục khoá là bị chặn, không phải mất",
+              FileUtils.directoryState(lockedChild) == .blocked)
+
+        // Không gọi Remover.perform ở đây: mục này sẽ bị đẩy sang đợt root và bật hộp mật khẩu
+        // thật. Chặn được `.notExist` ở trên là đã chặn đúng đường Remover từng báo "đã dọn".
+        chmod(locked.path, 0o700)
+
+        // Liên kết hỏng: bản thân nó vẫn nằm trên đĩa.
+        let link = dir.appendingPathComponent("liên-kết-hỏng")
+        try? fm.createSymbolicLink(at: link, withDestinationURL: dir.appendingPathComponent("không-có"))
+        check("liên kết hỏng vẫn được thấy là có mặt", FileUtils.presence(link) == .present)
+        check("liên kết hỏng chưa xoá thì không coi là đã xoá", !FileUtils.isGone(link))
+        try? fm.removeItem(at: link)
+        check("xoá rồi thì mới là đã xoá", FileUtils.isGone(link))
     }
 
     // MARK: Nhớ lựa chọn

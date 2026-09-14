@@ -950,8 +950,8 @@ final class UninstallStore: ObservableObject {
                 withAnimation(Motion.standard) {
                     self.outcome = result
                     self.isRemoving = false
-                    self.leftovers.removeAll { !FileUtils.exists($0.url) }
-                    if !FileUtils.exists(app.url) {
+                    self.leftovers.removeAll { FileUtils.isGone($0.url) }
+                    if FileUtils.isGone(app.url) {
                         self.apps.removeAll { $0.url == app.url }
                         self.selectedApp = nil
                     }
@@ -1077,7 +1077,7 @@ final class LargeOldStore: ObservableObject {
                 CleanLedger.shared.record(result.freedBytes)
                 withAnimation(Motion.standard) {
                     self.outcome = result
-                    self.files.removeAll { !FileUtils.exists($0.url) }
+                    self.files.removeAll { FileUtils.isGone($0.url) }
                     self.selected = []
                 }
             }
@@ -1200,7 +1200,7 @@ final class DuplicateStore: ObservableObject {
                     self.outcome = result
                     self.selected = []
                     for i in self.sets.indices {
-                        self.sets[i].files.removeAll { !FileUtils.exists($0) }
+                        self.sets[i].files.removeAll { FileUtils.isGone($0) }
                     }
                     self.sets.removeAll { $0.files.count < 2 }
                 }

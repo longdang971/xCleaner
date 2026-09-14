@@ -74,7 +74,8 @@ final class UndeletableMemory {
         lock.lock()
         let snapshot = paths
         lock.unlock()
-        let alive = snapshot.filter { FileManager.default.fileExists(atPath: $0) }
+        // Chỉ quên thứ chắc chắn đã mất; không được nhìn thì chưa chắc.
+        let alive = snapshot.filter { !FileUtils.isGone(URL(fileURLWithPath: $0)) }
         guard alive.count != snapshot.count else { return }
         lock.lock(); paths = alive; lock.unlock()
         UserDefaults.standard.set(Array(alive), forKey: defaultsKey)

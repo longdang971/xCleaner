@@ -56,6 +56,27 @@ enum FileUtils {
 
     static func exists(_ url: URL) -> Bool { fm.fileExists(atPath: url.path) }
 
+    /// Một đường dẫn có mặt trên đĩa không — mà **không** nhầm "không được nhìn" thành "không có".
+    enum Presence { case present, absent, unknown }
+
+    /// `fileExists` trả về `false` cho cả hai trường hợp: tệp thật sự không còn, và tệp còn
+    /// nguyên nhưng nằm trong thư mục app không được phép đi vào (đã đo: errno 13). Nó còn đi
+    /// theo liên kết tượng trưng, nên một liên kết hỏng vẫn nằm trên đĩa cũng bị báo là không có.
+    /// Kết luận "đã xoá" dựa vào nó là báo dọn xong những thứ chưa hề bị đụng tới.
+    ///
+    /// `lstat` thì nói rõ: `ENOENT`/`ENOTDIR` mới là không có, lỗi quyền là không biết.
+    static func presence(_ url: URL) -> Presence {
+        var st = stat()
+        if lstat(url.path, &st) == 0 { return .present }
+        switch errno {
+        case ENOENT, ENOTDIR: return .absent
+        default:              return .unknown
+        }
+    }
+
+    /// Chắc chắn là đã không còn trên đĩa.
+    static func isGone(_ url: URL) -> Bool { presence(url) == .absent }
+
     static func isDirectory(_ url: URL) -> Bool {
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { return false }
@@ -68,6 +89,13 @@ enum FileUtils {
     enum DirectoryState { case missing, blocked, empty, hasItems }
 
     static func directoryState(_ url: URL) -> DirectoryState {
+        // Thư mục cha không cho đi vào thì không biết nó còn hay mất — đó là bị chặn, không
+        // phải "không có". Gộp hai thứ này là thư mục chưa dọn được bị tính là đã sạch.
+        switch presence(url) {
+        case .absent:  return .missing
+        case .unknown: return .blocked
+        case .present: break
+        }
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else {
             return .missing

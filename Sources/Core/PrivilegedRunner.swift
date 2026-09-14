@@ -34,8 +34,9 @@ enum PrivilegedRunner {
         var stdout: String = ""
         /// Những dòng `rm` báo lỗi (nếu có).
         var errorLines: [String] = []
-        /// Lệnh có thật sự chạy không. Không chạy thì mọi kết luận "đã xoá" đều là bịa.
-        var executed: Bool = false
+        /// Những đường dẫn thật sự được đưa cho root. Mục không có mặt ở đây — vì bị hàng rào an
+        /// toàn loại, hoặc vì lệnh không chạy — thì không được phép kết luận là đã xoá.
+        var attempted: Set<String> = []
         /// Đường dẫn mà **root tự kiểm tra** thấy vẫn còn sau khi xoá. Đây là bằng chứng duy
         /// nhất đáng tin cho thư mục mà bản thân app còn không được phép đọc.
         var remaining: Set<String> = []
@@ -51,7 +52,8 @@ enum PrivilegedRunner {
     private static func verifyScript(manifest: String, emptyOnly: Bool) -> String {
         let test = emptyOnly
             ? "[ -n \"$(/usr/bin/find \"$1\" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)\" ]"
-            : "[ -e \"$1\" ]"
+            // `-e` đi theo liên kết: liên kết hỏng vẫn nằm đó mà báo là không có. Hỏi thêm `-L`.
+            : "[ -e \"$1\" ] || [ -L \"$1\" ]"
         return "/usr/bin/xargs -0 -I @ /bin/sh -c 'if \(test); then printf \"\(leftMarker)%s\\n\" \"$1\"; fi' sh @ < \(manifest) 2>/dev/null"
     }
 
@@ -98,8 +100,12 @@ enum PrivilegedRunner {
         parts.append("exit 0")
 
         let out = try runAsAdmin(command: parts.joined(separator: "; "), prompt: prompt)
-        var report = Report(stdout: out, executed: true)
-        for line in out.split(separator: "\n").map(String.init) {
+        var report = Report(stdout: out)
+        report.attempted = Set((toRemove + toEmpty).map(\.path))
+        // Tách theo MỌI kiểu xuống dòng: đường osascript (`do shell script`) đổi `\n` thành `\r`
+        // (đã đo), tách theo `\n` là cả báo cáo dính thành một dòng — chỉ đường dẫn đầu tiên được
+        // nhận là "còn", mọi mục sau bị coi là đã xoá.
+        for line in out.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty else { continue }
             if line.hasPrefix(leftMarker) {
