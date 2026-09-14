@@ -148,7 +148,9 @@ enum SafetyGuard {
 
         // Symlink thì chỉ xoá chính liên kết, nhưng nếu nó trỏ vào vùng cấm thì bỏ hẳn cho chắc.
         if isSymlink {
-            let resolved = (path as NSString).resolvingSymlinksInPath
+            // `resolvingSymlinksInPath` cũng tự bỏ `/private` như `standardizingPath`; không chuẩn
+            // hoá lại thì liên kết trỏ vào /private/var/db/sudo không bao giờ khớp vùng cấm.
+            let resolved = standardized(URL(fileURLWithPath: (path as NSString).resolvingSymlinksInPath)).path
             for p in protectedPrefixes where resolved == p || resolved.hasPrefix(p + "/") {
                 return .symlinkEscape(path, resolved)
             }

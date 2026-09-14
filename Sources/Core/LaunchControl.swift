@@ -159,7 +159,8 @@ enum LaunchControl {
         _ = try AuthorizationRunner.run(
             command: command,
             prompt: "xCleaner cần quyền quản trị để tắt và xoá mục khởi động “\(label)”.")
-        return !FileManager.default.fileExists(atPath: plist.path)
+        // `fileExists` báo `false` cả khi chỉ là không được nhìn — chỉ tin lstat.
+        return FileUtils.isGone(plist)
     }
 
     enum LaunchError: LocalizedError {

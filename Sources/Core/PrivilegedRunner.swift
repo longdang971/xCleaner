@@ -76,12 +76,18 @@ enum PrivilegedRunner {
         if emptyOnly {
             // Thư mục dọn ruột: `find` chạy trót lọt mà không in gì mới là rỗng. `find` lỗi thì
             // hỏi `stat` xem thư mục còn không, chứ không đoán.
-            body = #"if out=$(/usr/bin/find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null); then if [ -z "$out" ]; then printf "xcleaner-gone\t%s\n" "HEX"; else printf "xcleaner-left\t%s\n" "HEX"; fi; else "#
+            //
+            // Trừ liên kết tượng trưng: `find` không đi theo liên kết ở điểm xuất phát, nên với nó
+            // một liên kết tới thư mục đầy ắp cũng "không in gì, thoát 0" (đã đo) — tức là rỗng.
+            // Liên kết thì không bao giờ được khẳng định là đã dọn.
+            body = #"if [ -L "$1" ]; then printf "xcleaner-left\t%s\n" "HEX"; elif out=$(/usr/bin/find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null); then if [ -z "$out" ]; then printf "xcleaner-gone\t%s\n" "HEX"; else printf "xcleaner-left\t%s\n" "HEX"; fi; else "#
                 .replacingOccurrences(of: "HEX", with: hexOfArg) + verdict + "; fi"
         } else {
             body = verdict
         }
-        return "/usr/bin/xargs -0 -I @ /bin/sh -c '\(body)' sh @ < \(manifest)"
+        // `-p`: shell con cũng là bash, không có nó thì chính bước soi lại tự hạ về quyền thường
+        // (xem AuthorizationRunner) và nhìn đĩa bằng con mắt của người dùng thay vì của root.
+        return "/usr/bin/xargs -0 -I @ /bin/sh -p -c '\(body)' sh @ < \(manifest)"
     }
 
     // MARK: - API

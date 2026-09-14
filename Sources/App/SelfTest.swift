@@ -36,6 +36,7 @@ enum SelfTest {
         testTrashOfTrash()
         testHiddenIsNotGone()
         testRootBatchEvidence()
+        testRegressionGuards()
         testUpdater()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
@@ -383,6 +384,11 @@ enum SelfTest {
         _ = file("dọn-ruột/a.bin"); _ = file("dọn-ruột/.ẩn")
         let stuckDir = dir.appendingPathComponent("dọn-ruột-kẹt")
         _ = file("dọn-ruột-kẹt/b.bin")
+        // Liên kết tới một thư mục đầy: `find` không đi theo nên thấy "rỗng".
+        let fullTarget = dir.appendingPathComponent("đầy")
+        let keep = file("đầy/giữ.bin")
+        let linkDir = dir.appendingPathComponent("dọn-ruột-là-liên-kết")
+        try? fm.createSymbolicLink(at: linkDir, withDestinationURL: fullTarget)
 
         chmod(dir.appendingPathComponent("cha-chỉ-đọc").path, 0o555)
         chmod(dir.appendingPathComponent("dọn-ruột-kẹt").path, 0o555)
@@ -395,14 +401,15 @@ enum SelfTest {
 
         guard let batch = try? PrivilegedRunner.makeBatch(
                 remove: [plain, weird, stuck, hidden, link],
-                emptyContents: [emptyDir, stuckDir]) else {
+                emptyContents: [emptyDir, stuckDir, linkDir]) else {
             check("dựng được lệnh", false); return
         }
         defer { for m in batch.manifests { try? fm.removeItem(at: m) } }
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/sh")
-        proc.arguments = ["-c", batch.command]
+        // Đúng như AuthorizationRunner chạy: `/bin/sh -p -c`.
+        proc.arguments = ["-p", "-c", batch.command]
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = pipe
@@ -427,6 +434,9 @@ enum SelfTest {
               !r.confirmedLeft.contains(key(hidden)))
         check("dọn ruột (kể cả tệp ẩn): khẳng định đã rỗng", r.confirmedGone.contains(key(emptyDir)))
         check("dọn ruột không nổi: KHÔNG báo đã rỗng", !r.confirmedGone.contains(key(stuckDir)))
+        check("dọn ruột một liên kết: KHÔNG báo đã rỗng", !r.confirmedGone.contains(key(linkDir)),
+              "(find không đi theo liên kết nên thấy rỗng)")
+        check("dọn ruột một liên kết: nơi được trỏ tới còn nguyên", fm.fileExists(atPath: keep.path))
 
         // Đường osascript đổi `\n` thành `\r`: bằng chứng vẫn phải đọc ra y như vậy.
         let viaAppleScript = PrivilegedRunner.parse(out.replacingOccurrences(of: "\n", with: "\r"),
@@ -444,6 +454,64 @@ enum SelfTest {
         let forged = PrivilegedRunner.parse("xcleaner-gone\t2f6574632f706173737764\n",
                                             attempted: batch.attempted)
         check("bằng chứng cho đường dẫn ngoài lệnh bị bỏ qua", forged.confirmedGone.isEmpty)
+    }
+
+    /// Chặn những tác dụng phụ mà chính các bản vá trước đã gây ra.
+    private static func testRegressionGuards() {
+        print("[Hồi quy] tác dụng phụ của các bản vá trước")
+        let dir = makeSandbox()
+        let fm = FileManager.default
+
+        // Sổ "không xoá được" không được ghi thứ hệ thống vừa tạo lại.
+        let cutoff = Date().addingTimeInterval(-2)
+        let recreated = dir.appendingPathComponent("đệm-tạo-lại")
+        try? fm.createDirectory(at: recreated, withIntermediateDirectories: true)
+        fm.createFile(atPath: recreated.appendingPathComponent("mới.bin").path, contents: Data([1]))
+        check("thư mục vừa được tạo lại: không phải thứ cũ còn sót",
+              !Remover.hasOldContent(CleanItem(url: recreated, size: 1), before: cutoff))
+        check("dọn ruột mà chỉ còn tệp mới: không phải thứ cũ còn sót",
+              !Remover.hasOldContent(CleanItem(url: recreated, size: 1, emptyContentsOnly: true),
+                                     before: cutoff))
+        let future = Date().addingTimeInterval(3600)
+        check("thứ đã có từ trước mốc: đúng là còn sót",
+              Remover.hasOldContent(CleanItem(url: recreated, size: 1), before: future))
+        check("dọn ruột còn tệp cũ: đúng là còn sót",
+              Remover.hasOldContent(CleanItem(url: recreated, size: 1, emptyContentsOnly: true),
+                                    before: future))
+        let locked = dir.appendingPathComponent("khoá-sổ")
+        try? fm.createDirectory(at: locked, withIntermediateDirectories: true)
+        fm.createFile(atPath: locked.appendingPathComponent("x").path, contents: Data([1]))
+        chmod(locked.path, 0o000)
+        check("không nhìn được thì không ghi sổ",
+              !Remover.hasOldContent(CleanItem(url: locked, size: 1, emptyContentsOnly: true),
+                                     before: future))
+        chmod(locked.path, 0o755)
+
+        // "Dọn ruột" một liên kết tượng trưng: không được xoá ruột nơi nó trỏ tới.
+        let target = dir.appendingPathComponent("nơi-được-trỏ-tới")
+        try? fm.createDirectory(at: target, withIntermediateDirectories: true)
+        let precious = target.appendingPathComponent("quý.bin")
+        fm.createFile(atPath: precious.path, contents: Data(repeating: 0x50, count: 256))
+        let link = dir.appendingPathComponent("đệm-là-liên-kết")
+        try? fm.createSymbolicLink(at: link, withDestinationURL: target)
+        var ok: Bool?
+        let outcome = Remover.perform(
+            Remover.Request(items: [CleanItem(url: link, size: 256, emptyContentsOnly: true)],
+                            moveToTrash: false, adminPrompt: ""),
+            progress: { _, _ in }, itemFinished: { _, r in ok = r })
+        // Nhánh thường vốn không đi theo liên kết (đã đo), nên đây là chốt chặn cho thứ tự
+        // kiểm tra chứ không phải cho việc xoá; lỗi thật nằm ở tầng root, test ở trên.
+        check("ruột của nơi được trỏ tới còn nguyên", fm.fileExists(atPath: precious.path))
+        check("không báo là đã dọn", ok == false && outcome.removedCount == 0,
+              "(ok=\(String(describing: ok)), removed=\(outcome.removedCount))")
+
+        // Liên kết trỏ vào vùng cấm dạng /private phải bị nhận ra.
+        let sudoLink = dir.appendingPathComponent("trỏ-vào-sudo")
+        try? fm.createSymbolicLink(at: sudoLink, withDestinationURL: URL(fileURLWithPath: "/private/var/db/sudo"))
+        var escaped = false
+        if case .symlinkEscape? = SafetyGuard.validate(sudoLink) { escaped = true }
+        check("liên kết trỏ vào /private/var/db/sudo bị chặn", escaped,
+              "(\(String(describing: SafetyGuard.validate(sudoLink))))")
     }
 
     // MARK: Nhớ lựa chọn

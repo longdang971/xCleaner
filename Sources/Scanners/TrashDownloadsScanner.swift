@@ -29,7 +29,12 @@ struct TrashDownloadsScanner: ModuleScanner {
             trashDirs.append(vol.appendingPathComponent(".Trashes/\(uid)"))
         }
         for dir in trashDirs {
-            if FileUtils.directoryState(dir) == .blocked { trashBlocked = true }
+            // Chỉ báo "cần quyền" khi chính thư mục đó có mặt mà macOS không cho liệt kê. Ổ ngoài
+            // có `.Trashes` không cho đi vào thì chẳng biết thư mục của mình có hay không —
+            // báo "cần Toàn quyền truy cập đĩa" ở đó là bảo người dùng làm một việc không sửa được gì.
+            if FileUtils.presence(dir) == .present, FileUtils.directoryState(dir) == .blocked {
+                trashBlocked = true
+            }
             guard FileUtils.isDirectory(dir) else { continue }
             for f in FileUtils.children(of: dir) {
                 if cancel.isCancelled { break }

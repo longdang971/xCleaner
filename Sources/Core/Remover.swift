@@ -24,6 +24,9 @@ enum Remover {
                         itemFinished: @escaping (CleanItem, Bool) -> Void = { _, _ in }) -> CleanOutcome {
         var outcome = CleanOutcome()
         let fm = FileManager.default
+        /// Mốc để phân biệt thứ *không xoá nổi* với thứ *vừa được tạo lại*. Lùi vài giây cho
+        /// chắc: thà bỏ sót một lần ghi sổ còn hơn ghi oan.
+        let startedAt = Date().addingTimeInterval(-2)
 
         let total = max(1, request.items.count)
         var done = 0
@@ -69,6 +72,17 @@ enum Remover {
                           reason.localizedDescription)
                     finish(item, false)
                 }
+                continue
+            }
+
+            // "Dọn ruột" một liên kết tượng trưng: không bên nào dọn được gì (liệt kê bằng URL
+            // và `find` đều không đi theo liên kết — đã đo), nhưng các phép kiểm tra lại nhìn nó
+            // theo những cách khác nhau, và `find` thì thấy "rỗng" nên từng khẳng định là đã dọn.
+            // Bộ quét vốn bỏ qua liên kết (dung lượng 0), nên gặp ở đây tức là nó bị thay giữa
+            // lúc quét và lúc dọn: không đụng, không báo xong.
+            if item.emptyContentsOnly, isSymlink(item.url) {
+                outcome.failures.append((item.url, "Đã bị thay bằng liên kết tượng trưng."))
+                finish(item, false)
                 continue
             }
 
@@ -195,9 +209,11 @@ enum Remover {
                         outcome.removedCount += 1
                         outcome.freedBytes += item.size
                     } else {
-                        if report.confirmedLeft.contains(path) {
-                            // Root đã tự soi lại và khẳng định vẫn còn: lần sau cũng thế, nhớ lại
-                            // để bộ quét thôi mời người dùng dọn một thứ không dọn được.
+                        if report.confirmedLeft.contains(path),
+                           hasOldContent(item, before: startedAt) {
+                            // Root khẳng định vẫn còn, VÀ thứ còn lại là thứ cũ chứ không phải thứ
+                            // hệ thống vừa tạo lại: lần sau cũng không xoá nổi, nhớ lại để bộ quét
+                            // thôi mời người dùng dọn nó.
                             UndeletableMemory.shared.record(item.url)
                         }
                         outcome.failures.append((item.url, "Không xoá được dù đã có quyền quản trị."))
@@ -258,6 +274,32 @@ enum Remover {
         case .missing, .empty: return true
         case .hasItems, .blocked: return false
         }
+    }
+
+    /// Thứ còn lại sau khi root xoá có phải là thứ đã có từ trước không.
+    ///
+    /// Thư mục đệm của một dịch vụ đang chạy bị xoá xong là được tạo lại ngay trong tích tắc.
+    /// Nó "vẫn còn", nhưng lần nào cũng dọn được — ghi sổ "không xoá được" là giấu vĩnh viễn
+    /// một chỗ rác sẽ lại phình to. Chỉ ghi sổ khi thấy được tận mắt nội dung CŨ còn nằm đó;
+    /// không nhìn được thì không biết, và không biết thì không ghi.
+    static func hasOldContent(_ item: CleanItem, before cutoff: Date) -> Bool {
+        func isOld(_ url: URL) -> Bool {
+            guard let d = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate else {
+                return false
+            }
+            return d < cutoff
+        }
+        if item.emptyContentsOnly {
+            guard FileUtils.directoryState(item.url) != .blocked else { return false }
+            return FileUtils.children(of: item.url).contains(where: isOld)
+        }
+        guard FileUtils.presence(item.url) == .present else { return false }
+        return isOld(item.url)
+    }
+
+    private static func isSymlink(_ url: URL) -> Bool {
+        var st = stat()
+        return lstat(url.path, &st) == 0 && (st.st_mode & S_IFMT) == S_IFLNK
     }
 
     /// Mục này có nằm trong Thùng rác không — của người dùng hay của một ổ đĩa gắn ngoài.
