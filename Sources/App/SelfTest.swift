@@ -33,6 +33,7 @@ enum SelfTest {
         testBlockedEmptyContents()
         testSmartScanAlwaysFiveCards()
         testUndeletableMemory()
+        testTrashOfTrash()
         testUpdater()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
@@ -265,6 +266,39 @@ enum SelfTest {
         try? FileManager.default.removeItem(at: f)
         memory.forgetMissing()
         check("mục biến mất thì quên đi", !memory.contains(f))
+
+        // Mức quyền đổi thì danh sách cũ không còn đúng nữa: phần lớn thứ "không xoá nổi" là
+        // do chưa có Toàn quyền truy cập đĩa, cấp quyền xong là dọn được.
+        let g = dir.appendingPathComponent("sau-khi-cấp-quyền.bin")
+        FileManager.default.createFile(atPath: g.path, contents: Data(repeating: 0x4A, count: 1024))
+        memory.record(g)
+        UserDefaults.standard.set(!FileUtils.hasFullDiskAccess, forKey: "undeletableRecordedWithFullDisk")
+        memory.refresh()
+        check("đổi mức quyền thì quên hết", !memory.contains(g))
+        try? FileManager.default.removeItem(at: g)
+    }
+
+    /// Bật "chuyển vào Thùng rác" rồi dọn chính Thùng rác thì phải xoá thẳng.
+    ///
+    /// `trashItem` trên thứ đã nằm trong Thùng rác **không ném lỗi**: nó trả về thành công
+    /// kèm đúng đường dẫn cũ và để nguyên tệp ở đó (đo trên máy thật). Tin vào nó là app báo
+    /// đã dọn trong khi Thùng rác còn nguyên.
+    private static func testTrashOfTrash() {
+        print("[Remover] dọn Thùng rác khi đang bật chuyển-vào-Thùng-rác")
+        let fm = FileManager.default
+        let f = FileUtils.homePath(".Trash/xcleaner-selftest-trash.bin")
+        fm.createFile(atPath: f.path, contents: Data(repeating: 0x49, count: 2048))
+        guard FileUtils.exists(f) else {
+            check("dựng được tệp trong Thùng rác", false, "(macOS chặn ghi vào ~/.Trash)")
+            return
+        }
+        let item = CleanItem(url: f, size: 2048, isDirectory: false)
+        let outcome = Remover.perform(Remover.Request(items: [item], moveToTrash: true,
+                                                      adminPrompt: "test")) { _, _ in }
+        check("tệp đã biến mất khỏi Thùng rác", !FileUtils.exists(f))
+        check("báo đã dọn", outcome.removedCount == 1, "(\(outcome.removedCount))")
+        check("không báo lỗi", outcome.failures.isEmpty)
+        try? fm.removeItem(at: f)
     }
 
     // MARK: Nhớ lựa chọn

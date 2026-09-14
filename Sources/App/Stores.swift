@@ -208,8 +208,8 @@ final class ScanStore: ObservableObject {
         let throttle = self.throttle
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            // Mục đã biến mất thì quên nó đi, kẻo một mục mới trùng tên bị bỏ sót oan.
-            UndeletableMemory.shared.forgetMissing()
+            // Quên những mục đã biến mất, và quên sạch nếu mức quyền của app vừa đổi.
+            UndeletableMemory.shared.refresh()
             let result = scanner.scan(cancel: token) { p in
                 if let name = p.foundName, p.foundBytes > 0 {
                     DispatchQueue.main.async { [weak self] in

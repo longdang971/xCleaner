@@ -14,6 +14,8 @@ final class UndeletableMemory {
     static let shared = UndeletableMemory()
 
     private let defaultsKey = "undeletablePaths.v1"
+    /// Danh sách này chỉ đúng với mức quyền lúc ghi nó.
+    private let accessKey = "undeletableRecordedWithFullDisk"
     private let lock = NSLock()
     private var paths: Set<String>
 
@@ -43,6 +45,27 @@ final class UndeletableMemory {
         let k = key(for: url)
         lock.lock(); defer { lock.unlock() }
         return paths.contains(k)
+    }
+
+    /// Dọn lại danh sách trước mỗi lần quét.
+    ///
+    /// Hai lý do phải quên: mục không còn trên đĩa nữa, và **mức quyền của app đã đổi**. Phần
+    /// lớn thứ "không xoá nổi" là do chưa có Toàn quyền truy cập đĩa; người dùng cấp quyền
+    /// xong mà danh sách đen vẫn giữ thì những mục ấy biến mất khỏi mọi lần quét sau, dù giờ
+    /// đã dọn được.
+    func refresh() {
+        forgetIfAccessChanged()
+        forgetMissing()
+    }
+
+    private func forgetIfAccessChanged() {
+        let now = FileUtils.hasFullDiskAccess
+        let defaults = UserDefaults.standard
+        let before = defaults.object(forKey: accessKey) as? Bool
+        guard before != now else { return }
+        defaults.set(now, forKey: accessKey)
+        guard before != nil else { return }   // lần đầu thì chưa có gì để quên
+        forgetAll()
     }
 
     /// Mục đã biến mất (người dùng tự xoá tay, hoặc macOS dọn hộ) thì quên nó đi, để lần sau

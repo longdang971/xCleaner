@@ -34,64 +34,28 @@ enum PrivilegedRunner {
         var stdout: String = ""
         /// Những dòng `rm` báo lỗi (nếu có).
         var errorLines: [String] = []
+        /// Lệnh có thật sự chạy không. Không chạy thì mọi kết luận "đã xoá" đều là bịa.
+        var executed: Bool = false
+        /// Đường dẫn mà **root tự kiểm tra** thấy vẫn còn sau khi xoá. Đây là bằng chứng duy
+        /// nhất đáng tin cho thư mục mà bản thân app còn không được phép đọc.
+        var remaining: Set<String> = []
+    }
+
+    /// Tiền tố của dòng báo cáo do đoạn script kiểm tra lại in ra.
+    private static let leftMarker = "xcleaner-left\t"
+
+    /// Đoạn script hỏi lại từng đường dẫn trong tệp kê khai xem nó còn không.
+    ///
+    /// Đường dẫn đi vào `sh` như **đối số** (`sh @`) chứ không được nội suy vào chuỗi lệnh,
+    /// nên tên tệp chứa nháy, `$` hay backtick cũng không thành lệnh.
+    private static func verifyScript(manifest: String, emptyOnly: Bool) -> String {
+        let test = emptyOnly
+            ? "[ -n \"$(/usr/bin/find \"$1\" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)\" ]"
+            : "[ -e \"$1\" ]"
+        return "/usr/bin/xargs -0 -I @ /bin/sh -c 'if \(test); then printf \"\(leftMarker)%s\\n\" \"$1\"; fi' sh @ < \(manifest) 2>/dev/null"
     }
 
     // MARK: - API
-
-    /// Xoá danh sách đường dẫn dưới quyền root. Hỏi mật khẩu đúng một lần.
-    @discardableResult
-    static func remove(paths: [URL], prompt: String) throws -> Report {
-        let (accepted, rejected) = SafetyGuard.partition(paths)
-        for (url, reason) in rejected {
-            NSLog("[xCleaner] SafetyGuard chặn (admin): %@ — %@", url.path, reason.localizedDescription)
-        }
-        guard !accepted.isEmpty else { return Report() }
-
-        let manifest = try writeManifest(accepted)
-        defer { try? FileManager.default.removeItem(at: manifest) }
-
-        let m = shellQuote(manifest.path)
-        let command = "/usr/bin/xargs -0 /bin/rm -rf -- < \(m) 2>&1; /bin/rm -f \(m); exit 0"
-        let out = try runAsAdmin(command: command, prompt: prompt)
-
-        var report = Report(stdout: out)
-        report.errorLines = out
-            .split(separator: "\n")
-            .map(String.init)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        return report
-    }
-
-    /// Dọn sạch *nội dung* của các thư mục nhưng giữ lại chính thư mục đó
-    /// (một số thư mục hệ thống sẽ không được tạo lại nếu bị xoá hẳn).
-    /// Việc liệt kê phải do **root** làm, không phải chúng ta.
-    ///
-    /// Bản đầu liệt kê nội dung bằng `FileManager` rồi mới đưa danh sách cho root xoá. Thư mục
-    /// nào chỉ root đọc được thì danh sách đó rỗng — app im lặng không xoá gì, rồi lại thấy
-    /// "thư mục rỗng" nên báo là đã dọn xong. Giao cả việc liệt kê lẫn việc xoá cho một lệnh
-    /// `find` chạy dưới quyền root thì không còn chỗ cho sự nhầm lẫn đó.
-    @discardableResult
-    static func emptyContents(of dirs: [URL], prompt: String) throws -> Report {
-        let (accepted, rejected) = SafetyGuard.partition(dirs)
-        for (url, reason) in rejected {
-            NSLog("[xCleaner] SafetyGuard chặn (dọn ruột): %@ — %@", url.path, reason.localizedDescription)
-        }
-        guard !accepted.isEmpty else { return Report() }
-
-        let manifest = try writeManifest(accepted)
-        defer { try? FileManager.default.removeItem(at: manifest) }
-
-        let m = shellQuote(manifest.path)
-        // `-mindepth 1` giữ lại chính thư mục; `-maxdepth 1` để `rm -rf` lo phần bên trong.
-        let command = "/usr/bin/xargs -0 -I DIR /usr/bin/find DIR -mindepth 1 -maxdepth 1 "
-            + "-exec /bin/rm -rf -- {} + < \(m) 2>&1; /bin/rm -f \(m); exit 0"
-        let out = try runAsAdmin(command: command, prompt: prompt)
-
-        var report = Report(stdout: out)
-        report.errorLines = out.split(separator: "\n").map(String.init)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        return report
-    }
 
     /// Xoá hẳn nhóm này và dọn ruột nhóm kia trong **một** lần hỏi mật khẩu.
     ///
@@ -112,10 +76,12 @@ enum PrivilegedRunner {
         defer { for m in manifests { try? FileManager.default.removeItem(at: m) } }
 
         var parts: [String] = []
+        var verifies: [String] = []
         if !toRemove.isEmpty {
             let m = try writeManifest(toRemove)
             manifests.append(m)
             parts.append("/usr/bin/xargs -0 /bin/rm -rf -- < \(shellQuote(m.path)) 2>&1")
+            verifies.append(verifyScript(manifest: shellQuote(m.path), emptyOnly: false))
         }
         if !toEmpty.isEmpty {
             let m = try writeManifest(toEmpty)
@@ -123,14 +89,25 @@ enum PrivilegedRunner {
             // `-mindepth 1` giữ lại chính thư mục; `-maxdepth 1` để `rm -rf` lo phần bên trong.
             parts.append("/usr/bin/xargs -0 -I DIR /usr/bin/find DIR -mindepth 1 -maxdepth 1 "
                          + "-exec /bin/rm -rf -- {} + < \(shellQuote(m.path)) 2>&1")
+            verifies.append(verifyScript(manifest: shellQuote(m.path), emptyOnly: true))
         }
+        // Kiểm tra lại phải do chính root làm: thư mục mà app không được phép đọc thì
+        // `FileManager` của app nhìn vào chỉ thấy "rỗng" dù bên trong còn nguyên.
+        parts.append(contentsOf: verifies)
         parts.append("/bin/rm -f " + manifests.map { shellQuote($0.path) }.joined(separator: " "))
         parts.append("exit 0")
 
         let out = try runAsAdmin(command: parts.joined(separator: "; "), prompt: prompt)
-        var report = Report(stdout: out)
-        report.errorLines = out.split(separator: "\n").map(String.init)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        var report = Report(stdout: out, executed: true)
+        for line in out.split(separator: "\n").map(String.init) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            if line.hasPrefix(leftMarker) {
+                report.remaining.insert(String(line.dropFirst(leftMarker.count)))
+            } else {
+                report.errorLines.append(trimmed)
+            }
+        }
         return report
     }
 

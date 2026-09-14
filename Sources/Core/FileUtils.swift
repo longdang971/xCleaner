@@ -85,6 +85,14 @@ enum FileUtils {
         }
     }
 
+    /// App đã được cấp Toàn quyền truy cập đĩa chưa.
+    ///
+    /// Suy ra từ Thùng rác: nó nằm sau hàng rào TCC và máy nào cũng có. Đọc được nghĩa là
+    /// đã được cấp quyền, bị chặn nghĩa là chưa.
+    static var hasFullDiskAccess: Bool {
+        directoryState(homePath(".Trash")) != .blocked
+    }
+
     static func children(of url: URL) -> [URL] {
         (try? fm.contentsOfDirectory(at: url,
                                      includingPropertiesForKeys: Array(sizeKeys),

@@ -27,8 +27,15 @@ enum Remover {
 
         let total = max(1, request.items.count)
         var done = 0
-        func step(_ name: String) {
+        /// Vòng tiến trình chỉ nhích khi một mục thật sự xong. Mục bị đẩy sang đợt root đi qua
+        /// hai vòng lặp, đếm ở cả hai chỗ là tiến trình chạm 100% khi còn nửa việc chưa làm.
+        func finish(_ item: CleanItem, _ ok: Bool) {
             done += 1
+            progress(min(1, Double(done) / Double(total)), item.name)
+            itemFinished(item, ok)
+        }
+        /// Chỉ đổi dòng chữ "đang xử lý…", không đụng tới con số.
+        func announce(_ name: String) {
             progress(min(1, Double(done) / Double(total)), name)
         }
 
@@ -55,14 +62,12 @@ enum Remover {
                 if case .notExist = reason {
                     // Mục đã biến mất từ lúc quét thì coi như xong, không báo lỗi.
                     outcome.removedCount += 1
-                    step(item.name)
-                    itemFinished(item, true)
+                    finish(item, true)
                 } else {
                     outcome.failures.append((item.url, reason.localizedDescription))
                     NSLog("[xCleaner] SafetyGuard chặn: %@ — %@", item.url.path,
                           reason.localizedDescription)
-                    step(item.name)
-                    itemFinished(item, false)
+                    finish(item, false)
                 }
                 continue
             }
@@ -86,7 +91,7 @@ enum Remover {
                 outcome.wasCancelled = true
                 break
             }
-            step(item.name)
+            announce(item.name)
 
             // Thư mục bị macOS chặn đọc thì `children` trả về mảng rỗng: không có gì để xoá,
             // mà cũng không có gì chứng minh bên trong đã sạch. Bản trước coi đó là "đã dọn
@@ -103,7 +108,10 @@ enum Remover {
 
             for t in targets {
                 do {
-                    if request.moveToTrash {
+                    // Thứ vốn đã nằm trong Thùng rác thì không chuyển vào Thùng rác được nữa:
+                    // macOS nhận lệnh, trả về "thành công", trả lại đúng đường dẫn cũ và để
+                    // nguyên tệp ở đó (đã đo trên máy). Những mục này luôn xoá thẳng.
+                    if request.moveToTrash && !isInsideTrash(t) {
                         var resulting: NSURL?
                         try fm.trashItem(at: t, resultingItemURL: &resulting)
                         if resulting != nil { trashed += 1 }
@@ -147,7 +155,7 @@ enum Remover {
                 outcome.freedBytes += item.size
                 if trashed > 0 { outcome.trashedCount += 1 }
             }
-            itemFinished(item, !itemFailed)
+            finish(item, !itemFailed)
         }
 
         // ---- Phần cần quyền root: gom một lần hỏi mật khẩu ----
@@ -169,29 +177,28 @@ enum Remover {
                 for line in report.errorLines.prefix(20) {
                     NSLog("[xCleaner] rm(root): %@", line)
                 }
-                // Xác nhận từng mục thay vì tin vào mã thoát của rm.
+                // Xác nhận từng mục bằng thứ root tự nhìn thấy, không phải mã thoát của rm và
+                // cũng không phải một dòng lỗi chung chung: một mục hỏng mà làm cả loạt mục
+                // khác bị ghi sổ "không xoá được" thì lần quét sau chúng biến mất oan.
+                let stillThere = report.remaining
                 for item in adminItems {
-                    step(item.name)
-                    let gone: Bool
-                    if item.emptyContentsOnly {
-                        // Thư mục mình không được phép đọc thì "rỗng" chẳng chứng minh điều gì —
-                        // lúc đó dựa vào việc lệnh chạy dưới quyền root có kêu ca gì không.
-                        gone = FileUtils.directoryState(item.url) == .blocked
-                            ? report.errorLines.isEmpty
-                            : isCleared(item)
-                    } else {
-                        gone = !FileUtils.exists(item.url)
-                    }
+                    let path = SafetyGuard.standardized(item.url).path
+                    // Root bảo sạch thì vẫn phải hợp với thứ app tự nhìn thấy — trừ khi app
+                    // không được phép nhìn, lúc đó lời của root là tất cả những gì ta có.
+                    let appAgrees = FileUtils.directoryState(item.url) == .blocked || isCleared(item)
+                    let gone = report.executed && !stillThere.contains(path) && appAgrees
                     if gone {
                         outcome.removedCount += 1
                         outcome.freedBytes += item.size
                     } else {
-                        // Đã chạy bằng root mà vẫn còn thì lần sau cũng vậy: nhớ lại để bộ quét
-                        // thôi mời người dùng dọn một thứ không dọn được.
-                        UndeletableMemory.shared.record(item.url)
+                        if report.executed {
+                            // Root đã chạy và tự soi lại mà vẫn còn: lần sau cũng thế, nhớ lại
+                            // để bộ quét thôi mời người dùng dọn một thứ không dọn được.
+                            UndeletableMemory.shared.record(item.url)
+                        }
                         outcome.failures.append((item.url, "Không xoá được dù đã có quyền quản trị."))
                     }
-                    itemFinished(item, gone)
+                    finish(item, gone)
                 }
             } catch PrivilegedRunner.Failure.cancelledByUser {
                 outcome.wasCancelled = true
@@ -199,28 +206,22 @@ enum Remover {
                 // nếu không màn hình đếm hụt và người dùng chỉ thấy "đã dọn xong" trong khi
                 // hàng trăm mục còn nguyên.
                 for item in adminItems {
-                    step(item.name)
                     outcome.failures.append((item.url, "Cần quyền quản trị — bạn đã huỷ nhập mật khẩu."))
-                    itemFinished(item, false)
+                    finish(item, false)
                 }
             } catch {
                 for item in adminItems {
-                    step(item.name)
                     outcome.failures.append((item.url, error.localizedDescription))
-                    itemFinished(item, false)
+                    finish(item, false)
                 }
             }
         } else if !adminItems.isEmpty {
             // Người dùng bấm dừng trước khi tới đợt root.
-            for item in adminItems {
-                step(item.name)
-                itemFinished(item, false)
-            }
+            for item in adminItems { finish(item, false) }
         }
 
         // ---- Mục được dọn nhờ mục bao nó ----
         for item in coveredItems {
-            step(item.name)
             let gone = isCleared(item)
             if gone {
                 // Dung lượng đã được tính ở mục bao nó, cộng lần nữa là nói quá.
@@ -228,7 +229,7 @@ enum Remover {
             } else if !outcome.wasCancelled {
                 outcome.failures.append((item.url, "Vẫn còn sau khi dọn mục chứa nó."))
             }
-            itemFinished(item, gone)
+            finish(item, gone)
         }
 
         progress(1.0, "Hoàn tất")
@@ -255,6 +256,14 @@ enum Remover {
         }
     }
 
+    /// Mục này có nằm trong Thùng rác không — của người dùng hay của một ổ đĩa gắn ngoài.
+    private static func isInsideTrash(_ url: URL) -> Bool {
+        let path = SafetyGuard.standardized(url).path
+        if path.hasPrefix(NSHomeDirectory() + "/.Trash/") { return true }
+        // Ổ ngoài: /Volumes/<tên ổ>/.Trashes/<uid>/…
+        return path.range(of: #"^/Volumes/[^/]+/\.Trashes/"#, options: .regularExpression) != nil
+    }
+
     /// Có mục cha nào của `path` cũng nằm trong danh sách sắp xoá không.
     private static func hasAncestor(of path: String, in set: Set<String>) -> Bool {
         var parent = (path as NSString).deletingLastPathComponent
@@ -263,21 +272,5 @@ enum Remover {
             parent = (parent as NSString).deletingLastPathComponent
         }
         return false
-    }
-
-    /// Dọn Thùng rác (mọi ổ đĩa) — dùng API riêng vì Thùng rác ở ổ ngoài nằm ở `/Volumes/X/.Trashes/<uid>`.
-    static func emptyTrash(items: [CleanItem]) -> CleanOutcome {
-        var outcome = CleanOutcome()
-        let fm = FileManager.default
-        for item in items {
-            do {
-                try fm.removeItem(at: item.url)
-                outcome.removedCount += 1
-                outcome.freedBytes += item.size
-            } catch {
-                outcome.failures.append((item.url, error.localizedDescription))
-            }
-        }
-        return outcome
     }
 }
