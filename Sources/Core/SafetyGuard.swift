@@ -92,8 +92,18 @@ enum SafetyGuard {
     }()
 
     /// Chuẩn hoá đường dẫn: bỏ `//`, `.`, `..` và ký tự `/` thừa ở cuối.
+    ///
+    /// `standardizingPath` còn tự ý bỏ tiền tố `/private` (đã đo: `/private/var/log/x` thành
+    /// `/var/log/x`), trong khi mọi danh sách ở đây viết theo dạng `/private/...`. Không gắn
+    /// lại thì nhật ký hệ thống trong `/private/var/log` bị chặn im lặng, còn các vùng cấm
+    /// như `/private/var/db/sudo` chỉ còn được giữ nhờ may mắn không nằm trong danh sách cho phép.
     static func standardized(_ url: URL) -> URL {
-        URL(fileURLWithPath: (url.path as NSString).standardizingPath)
+        var path = (url.path as NSString).standardizingPath
+        for top in ["/var", "/etc", "/tmp"] where path == top || path.hasPrefix(top + "/") {
+            path = "/private" + path
+            break
+        }
+        return URL(fileURLWithPath: path)
     }
 
     static func validate(_ url: URL, requireExists: Bool = true) -> Rejection? {

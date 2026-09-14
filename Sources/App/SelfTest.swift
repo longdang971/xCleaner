@@ -35,6 +35,7 @@ enum SelfTest {
         testUndeletableMemory()
         testTrashOfTrash()
         testHiddenIsNotGone()
+        testRootBatchEvidence()
         testUpdater()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
@@ -95,6 +96,18 @@ enum SelfTest {
         check("chấp nhận app trong /Applications",
               SafetyGuard.validate(URL(fileURLWithPath: "/Applications/Example.app"),
                                    requireExists: false) == nil)
+
+        // `standardizingPath` tự bỏ `/private` — nhật ký xoay vòng từng bị chặn vì thế.
+        check("chấp nhận nhật ký xoay vòng trong /private/var/log",
+              SafetyGuard.validate(URL(fileURLWithPath: "/private/var/log/system.log.0.gz"),
+                                   requireExists: false) == nil)
+        check("chuẩn hoá giữ nguyên dạng /private",
+              SafetyGuard.standardized(URL(fileURLWithPath: "/var/log/x")).path == "/private/var/log/x")
+        for p in ["/var/db/sudo/ts", "/private/var/db/sudo/ts", "/etc/passwd", "/var/vm/sleepimage",
+                  "/var/db/dslocal/nodes"] {
+            check("vẫn từ chối \(p)",
+                  SafetyGuard.validate(URL(fileURLWithPath: p), requireExists: false) != nil)
+        }
     }
 
     // MARK: Xoá
@@ -341,6 +354,96 @@ enum SelfTest {
         check("liên kết hỏng chưa xoá thì không coi là đã xoá", !FileUtils.isGone(link))
         try? fm.removeItem(at: link)
         check("xoá rồi thì mới là đã xoá", FileUtils.isGone(link))
+    }
+
+    /// Chạy **đúng lệnh mà đợt root sẽ chạy**, chỉ khác là bằng `/bin/sh` dưới quyền người dùng,
+    /// để kiểm được cả tầng xác minh của root mà không phải bật hộp mật khẩu.
+    ///
+    /// Điều cần chứng minh: một mục chỉ được báo đã xoá khi có lời khẳng định cho đúng nó, và
+    /// mọi sự cố — không xoá nổi, không được nhìn, output bị cắt, bị đổi xuống dòng — đều ngả
+    /// về phía "chưa xoá".
+    private static func testRootBatchEvidence() {
+        print("[PrivilegedRunner] lệnh root chỉ báo đã xoá khi có bằng chứng")
+        let dir = makeSandbox()
+        let fm = FileManager.default
+        func file(_ rel: String) -> URL {
+            let u = dir.appendingPathComponent(rel)
+            try? fm.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
+            fm.createFile(atPath: u.path, contents: Data(repeating: 0x4C, count: 512))
+            return u
+        }
+
+        let plain = file("thường.bin")
+        let weird = file("tên \"lạ\" $(touch PWNED) `x` 'y'\nxuống-dòng.bin")
+        let stuck = file("cha-chỉ-đọc/kẹt.bin")                       // cha 0555: không xoá được
+        let hidden = file("cha-khoá/giấu.bin")                        // cha 0000: không được nhìn
+        let link = dir.appendingPathComponent("liên-kết-hỏng")
+        try? fm.createSymbolicLink(at: link, withDestinationURL: dir.appendingPathComponent("không-có"))
+        let emptyDir = dir.appendingPathComponent("dọn-ruột")
+        _ = file("dọn-ruột/a.bin"); _ = file("dọn-ruột/.ẩn")
+        let stuckDir = dir.appendingPathComponent("dọn-ruột-kẹt")
+        _ = file("dọn-ruột-kẹt/b.bin")
+
+        chmod(dir.appendingPathComponent("cha-chỉ-đọc").path, 0o555)
+        chmod(dir.appendingPathComponent("dọn-ruột-kẹt").path, 0o555)
+        chmod(dir.appendingPathComponent("cha-khoá").path, 0o000)
+        defer {
+            for d in ["cha-chỉ-đọc", "dọn-ruột-kẹt", "cha-khoá"] {
+                chmod(dir.appendingPathComponent(d).path, 0o755)
+            }
+        }
+
+        guard let batch = try? PrivilegedRunner.makeBatch(
+                remove: [plain, weird, stuck, hidden, link],
+                emptyContents: [emptyDir, stuckDir]) else {
+            check("dựng được lệnh", false); return
+        }
+        defer { for m in batch.manifests { try? fm.removeItem(at: m) } }
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
+        proc.arguments = ["-c", batch.command]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = pipe
+        try? proc.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
+        let out = String(decoding: data, as: UTF8.self)
+        let r = PrivilegedRunner.parse(out, attempted: batch.attempted)
+
+        func key(_ u: URL) -> String { SafetyGuard.standardized(u).path }
+        check("tệp thường: khẳng định đã mất", r.confirmedGone.contains(key(plain)))
+        check("tên có nháy/$()/backtick/xuống dòng: khẳng định đã mất",
+              r.confirmedGone.contains(key(weird)), "(\(out.prefix(300)))")
+        check("không lệnh chèn nào chạy",
+              !fm.fileExists(atPath: dir.appendingPathComponent("PWNED").path)
+              && !fm.fileExists(atPath: FileManager.default.currentDirectoryPath + "/PWNED"))
+        check("liên kết hỏng: khẳng định đã mất (đã xoá được)", r.confirmedGone.contains(key(link)))
+        check("không xoá nổi: KHÔNG báo đã mất", !r.confirmedGone.contains(key(stuck)))
+        check("không xoá nổi: khẳng định vẫn còn", r.confirmedLeft.contains(key(stuck)))
+        check("không được nhìn: KHÔNG báo đã mất", !r.confirmedGone.contains(key(hidden)))
+        check("không được nhìn: không bị ghi là còn (không biết thì không kết luận)",
+              !r.confirmedLeft.contains(key(hidden)))
+        check("dọn ruột (kể cả tệp ẩn): khẳng định đã rỗng", r.confirmedGone.contains(key(emptyDir)))
+        check("dọn ruột không nổi: KHÔNG báo đã rỗng", !r.confirmedGone.contains(key(stuckDir)))
+
+        // Đường osascript đổi `\n` thành `\r`: bằng chứng vẫn phải đọc ra y như vậy.
+        let viaAppleScript = PrivilegedRunner.parse(out.replacingOccurrences(of: "\n", with: "\r"),
+                                                    attempted: batch.attempted)
+        check("xuống dòng kiểu \\r vẫn đọc đúng",
+              viaAppleScript.confirmedGone == r.confirmedGone
+              && viaAppleScript.confirmedLeft == r.confirmedLeft)
+
+        // Lệnh chết giữa chừng / output bị cắt: không tin tức thì không được báo là đã xoá.
+        let truncated = PrivilegedRunner.parse(String(out.prefix(10)), attempted: batch.attempted)
+        check("output bị cắt: không báo mục nào đã xoá", truncated.confirmedGone.isEmpty)
+        let empty = PrivilegedRunner.parse("", attempted: batch.attempted)
+        check("không có output: không báo mục nào đã xoá", empty.confirmedGone.isEmpty)
+        // Báo cho một đường dẫn không nằm trong lệnh thì bỏ qua.
+        let forged = PrivilegedRunner.parse("xcleaner-gone\t2f6574632f706173737764\n",
+                                            attempted: batch.attempted)
+        check("bằng chứng cho đường dẫn ngoài lệnh bị bỏ qua", forged.confirmedGone.isEmpty)
     }
 
     // MARK: Nhớ lựa chọn

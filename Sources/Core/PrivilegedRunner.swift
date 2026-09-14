@@ -34,64 +34,89 @@ enum PrivilegedRunner {
         var stdout: String = ""
         /// Những dòng `rm` báo lỗi (nếu có).
         var errorLines: [String] = []
-        /// Những đường dẫn thật sự được đưa cho root. Mục không có mặt ở đây — vì bị hàng rào an
-        /// toàn loại, hoặc vì lệnh không chạy — thì không được phép kết luận là đã xoá.
+        /// Những đường dẫn thật sự được đưa cho root.
         var attempted: Set<String> = []
-        /// Đường dẫn mà **root tự kiểm tra** thấy vẫn còn sau khi xoá. Đây là bằng chứng duy
-        /// nhất đáng tin cho thư mục mà bản thân app còn không được phép đọc.
-        var remaining: Set<String> = []
+        /// Đường dẫn mà **root khẳng định** đã không còn (hoặc, với thư mục dọn ruột, đã rỗng).
+        ///
+        /// Chỉ thứ có mặt ở đây mới được báo là đã xoá. Bản trước làm ngược lại — "không thấy
+        /// báo còn thì là đã mất" — nên mọi sự cố (lệnh chết giữa chừng, output bị cắt, tên tệp
+        /// chứa xuống dòng) đều ngả về phía báo đã xoá. Giờ chúng ngả về phía "chưa xoá".
+        var confirmedGone: Set<String> = []
+        /// Đường dẫn mà root khẳng định **vẫn còn**. Chỉ thứ ở đây mới được ghi sổ "không xoá
+        /// được" — không có tin tức gì thì không được kết luận gì.
+        var confirmedLeft: Set<String> = []
     }
 
-    /// Tiền tố của dòng báo cáo do đoạn script kiểm tra lại in ra.
+    /// Một lệnh root đã dựng xong, cùng những thứ phải dọn sau khi chạy.
+    struct Batch {
+        let command: String
+        let manifests: [URL]
+        let attempted: Set<String>
+    }
+
+    private static let goneMarker = "xcleaner-gone\t"
     private static let leftMarker = "xcleaner-left\t"
 
-    /// Đoạn script hỏi lại từng đường dẫn trong tệp kê khai xem nó còn không.
+    /// In đường dẫn `$1` dưới dạng hex. Hex không chứa xuống dòng, không bị `do shell script`
+    /// đổi `\n` thành `\r`, không bị `fgets` cắt ngang một ký tự tiếng Việt — tên tệp kỳ quặc
+    /// đến đâu cũng về tới app nguyên vẹn. `-v` để `od` không nén các dòng giống nhau thành `*`.
+    private static let hexOfArg = #"$(printf %s "$1" | /usr/bin/od -An -v -tx1 | /usr/bin/tr -d " \n")"#
+
+    /// Kết luận "đã mất" chỉ khi `stat` nói đúng là không có. `[ -e ]` không phân biệt được
+    /// "không có" với "không được phép nhìn", và còn đi theo liên kết tượng trưng.
+    private static let statVerdict = #"if err=$(LC_ALL=C /usr/bin/stat -f "" -- "$1" 2>&1 >/dev/null); then printf "xcleaner-left\t%s\n" "HEX"; else case "$err" in *": No such file or directory"|*": Not a directory") printf "xcleaner-gone\t%s\n" "HEX";; esac; fi"#
+
+    /// Đoạn script hỏi lại từng đường dẫn trong tệp kê khai.
     ///
     /// Đường dẫn đi vào `sh` như **đối số** (`sh @`) chứ không được nội suy vào chuỗi lệnh,
     /// nên tên tệp chứa nháy, `$` hay backtick cũng không thành lệnh.
     private static func verifyScript(manifest: String, emptyOnly: Bool) -> String {
-        let test = emptyOnly
-            ? "[ -n \"$(/usr/bin/find \"$1\" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)\" ]"
-            // `-e` đi theo liên kết: liên kết hỏng vẫn nằm đó mà báo là không có. Hỏi thêm `-L`.
-            : "[ -e \"$1\" ] || [ -L \"$1\" ]"
-        return "/usr/bin/xargs -0 -I @ /bin/sh -c 'if \(test); then printf \"\(leftMarker)%s\\n\" \"$1\"; fi' sh @ < \(manifest) 2>/dev/null"
+        let verdict = statVerdict.replacingOccurrences(of: "HEX", with: hexOfArg)
+        let body: String
+        if emptyOnly {
+            // Thư mục dọn ruột: `find` chạy trót lọt mà không in gì mới là rỗng. `find` lỗi thì
+            // hỏi `stat` xem thư mục còn không, chứ không đoán.
+            body = #"if out=$(/usr/bin/find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null); then if [ -z "$out" ]; then printf "xcleaner-gone\t%s\n" "HEX"; else printf "xcleaner-left\t%s\n" "HEX"; fi; else "#
+                .replacingOccurrences(of: "HEX", with: hexOfArg) + verdict + "; fi"
+        } else {
+            body = verdict
+        }
+        return "/usr/bin/xargs -0 -I @ /bin/sh -c '\(body)' sh @ < \(manifest)"
     }
 
     // MARK: - API
 
-    /// Xoá hẳn nhóm này và dọn ruột nhóm kia trong **một** lần hỏi mật khẩu.
-    ///
-    /// Gọi `remove` rồi `emptyContents` là hai lệnh, mà mỗi lệnh dựng một `AuthorizationRef`
-    /// mới nên người dùng phải nhập mật khẩu hai lần cho cùng một cú bấm "Dọn".
-    @discardableResult
-    static func removeAndEmpty(remove paths: [URL],
-                               emptyContents dirs: [URL],
-                               prompt: String) throws -> Report {
+    /// Dựng lệnh xoá hẳn nhóm này, dọn ruột nhóm kia, rồi để root tự soi lại từng đường dẫn.
+    /// Tách riêng khỏi việc chạy để kiểm tra được mà không phải nhập mật khẩu.
+    static func makeBatch(remove paths: [URL], emptyContents dirs: [URL]) throws -> Batch? {
         let (toRemove, rejectedRemove) = SafetyGuard.partition(paths)
         let (toEmpty, rejectedEmpty) = SafetyGuard.partition(dirs)
         for (url, reason) in rejectedRemove + rejectedEmpty {
             NSLog("[xCleaner] SafetyGuard chặn (admin): %@ — %@", url.path, reason.localizedDescription)
         }
-        guard !toRemove.isEmpty || !toEmpty.isEmpty else { return Report() }
+        guard !toRemove.isEmpty || !toEmpty.isEmpty else { return nil }
 
         var manifests: [URL] = []
-        defer { for m in manifests { try? FileManager.default.removeItem(at: m) } }
-
         var parts: [String] = []
         var verifies: [String] = []
-        if !toRemove.isEmpty {
-            let m = try writeManifest(toRemove)
-            manifests.append(m)
-            parts.append("/usr/bin/xargs -0 /bin/rm -rf -- < \(shellQuote(m.path)) 2>&1")
-            verifies.append(verifyScript(manifest: shellQuote(m.path), emptyOnly: false))
-        }
-        if !toEmpty.isEmpty {
-            let m = try writeManifest(toEmpty)
-            manifests.append(m)
-            // `-mindepth 1` giữ lại chính thư mục; `-maxdepth 1` để `rm -rf` lo phần bên trong.
-            parts.append("/usr/bin/xargs -0 -I DIR /usr/bin/find DIR -mindepth 1 -maxdepth 1 "
-                         + "-exec /bin/rm -rf -- {} + < \(shellQuote(m.path)) 2>&1")
-            verifies.append(verifyScript(manifest: shellQuote(m.path), emptyOnly: true))
+        do {
+            if !toRemove.isEmpty {
+                let m = try writeManifest(toRemove)
+                manifests.append(m)
+                parts.append("/usr/bin/xargs -0 /bin/rm -rf -- < \(shellQuote(m.path)) 2>&1")
+                verifies.append(verifyScript(manifest: shellQuote(m.path), emptyOnly: false))
+            }
+            if !toEmpty.isEmpty {
+                let m = try writeManifest(toEmpty)
+                manifests.append(m)
+                // `-mindepth 1` giữ lại chính thư mục; `-maxdepth 1` để `rm -rf` lo phần bên trong.
+                parts.append("/usr/bin/xargs -0 -I DIR /usr/bin/find DIR -mindepth 1 -maxdepth 1 "
+                             + "-exec /bin/rm -rf -- {} + < \(shellQuote(m.path)) 2>&1")
+                verifies.append(verifyScript(manifest: shellQuote(m.path), emptyOnly: true))
+            }
+        } catch {
+            for m in manifests { try? FileManager.default.removeItem(at: m) }
+            throw error
         }
         // Kiểm tra lại phải do chính root làm: thư mục mà app không được phép đọc thì
         // `FileManager` của app nhìn vào chỉ thấy "rỗng" dù bên trong còn nguyên.
@@ -99,22 +124,59 @@ enum PrivilegedRunner {
         parts.append("/bin/rm -f " + manifests.map { shellQuote($0.path) }.joined(separator: " "))
         parts.append("exit 0")
 
-        let out = try runAsAdmin(command: parts.joined(separator: "; "), prompt: prompt)
-        var report = Report(stdout: out)
-        report.attempted = Set((toRemove + toEmpty).map(\.path))
-        // Tách theo MỌI kiểu xuống dòng: đường osascript (`do shell script`) đổi `\n` thành `\r`
-        // (đã đo), tách theo `\n` là cả báo cáo dính thành một dòng — chỉ đường dẫn đầu tiên được
-        // nhận là "còn", mọi mục sau bị coi là đã xoá.
-        for line in out.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty else { continue }
-            if line.hasPrefix(leftMarker) {
-                report.remaining.insert(String(line.dropFirst(leftMarker.count)))
+        return Batch(command: parts.joined(separator: "; "),
+                     manifests: manifests,
+                     attempted: Set((toRemove + toEmpty).map(\.path)))
+    }
+
+    /// Đọc những gì lệnh root in ra thành bằng chứng theo từng đường dẫn.
+    static func parse(_ out: String, attempted: Set<String>) -> Report {
+        var report = Report(stdout: out, attempted: attempted)
+        // Tách theo MỌI kiểu xuống dòng: đường osascript (`do shell script`) đổi `\n` thành `\r`.
+        for raw in out.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty else { continue }
+            if raw.hasPrefix(goneMarker), let path = decodeHex(raw.dropFirst(goneMarker.count)),
+               attempted.contains(path) {
+                report.confirmedGone.insert(path)
+            } else if raw.hasPrefix(leftMarker), let path = decodeHex(raw.dropFirst(leftMarker.count)),
+                      attempted.contains(path) {
+                report.confirmedLeft.insert(path)
             } else {
-                report.errorLines.append(trimmed)
+                report.errorLines.append(line)
             }
         }
+        // Một đường dẫn không thể vừa mất vừa còn; có mâu thuẫn thì tin phía "còn".
+        report.confirmedGone.subtract(report.confirmedLeft)
         return report
+    }
+
+    private static func decodeHex(_ hex: Substring) -> String? {
+        let chars = Array(hex.trimmingCharacters(in: .whitespaces))
+        guard !chars.isEmpty, chars.count % 2 == 0 else { return nil }
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(chars.count / 2)
+        var i = 0
+        while i < chars.count {
+            guard let b = UInt8(String(chars[i...i + 1]), radix: 16) else { return nil }
+            bytes.append(b)
+            i += 2
+        }
+        return String(bytes: bytes, encoding: .utf8)
+    }
+
+    /// Xoá hẳn nhóm này và dọn ruột nhóm kia trong **một** lần hỏi mật khẩu.
+    ///
+    /// Gọi hai lệnh riêng thì mỗi lệnh dựng một `AuthorizationRef` mới và người dùng phải
+    /// nhập mật khẩu hai lần cho cùng một cú bấm "Dọn".
+    @discardableResult
+    static func removeAndEmpty(remove paths: [URL],
+                               emptyContents dirs: [URL],
+                               prompt: String) throws -> Report {
+        guard let batch = try makeBatch(remove: paths, emptyContents: dirs) else { return Report() }
+        defer { for m in batch.manifests { try? FileManager.default.removeItem(at: m) } }
+        let out = try runAsAdmin(command: batch.command, prompt: prompt)
+        return parse(out, attempted: batch.attempted)
     }
 
     /// Kiểm tra nhanh xem người dùng có quyền ghi trực tiếp không (để biết có cần hỏi mật khẩu).

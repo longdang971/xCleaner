@@ -182,23 +182,21 @@ enum Remover {
                 for line in report.errorLines.prefix(20) {
                     NSLog("[xCleaner] rm(root): %@", line)
                 }
-                // Xác nhận từng mục bằng thứ root tự nhìn thấy, không phải mã thoát của rm và
-                // cũng không phải một dòng lỗi chung chung: một mục hỏng mà làm cả loạt mục
-                // khác bị ghi sổ "không xoá được" thì lần quét sau chúng biến mất oan.
-                let stillThere = report.remaining
+                // Xác nhận từng mục bằng lời khẳng định của chính root cho đúng đường dẫn đó —
+                // không phải mã thoát của rm, không phải "không thấy báo lỗi". Không có tin tức
+                // gì về một mục thì mục đó là CHƯA xoá.
                 for item in adminItems {
                     let path = SafetyGuard.standardized(item.url).path
                     // Root bảo sạch thì vẫn phải hợp với thứ app tự nhìn thấy — trừ khi app
                     // không được phép nhìn, lúc đó lời của root là tất cả những gì ta có.
                     let appAgrees = FileUtils.directoryState(item.url) == .blocked || isCleared(item)
-                    let tried = report.attempted.contains(path)
-                    let gone = tried && !stillThere.contains(path) && appAgrees
+                    let gone = report.confirmedGone.contains(path) && appAgrees
                     if gone {
                         outcome.removedCount += 1
                         outcome.freedBytes += item.size
                     } else {
-                        if tried {
-                            // Root đã chạy và tự soi lại mà vẫn còn: lần sau cũng thế, nhớ lại
+                        if report.confirmedLeft.contains(path) {
+                            // Root đã tự soi lại và khẳng định vẫn còn: lần sau cũng thế, nhớ lại
                             // để bộ quét thôi mời người dùng dọn một thứ không dọn được.
                             UndeletableMemory.shared.record(item.url)
                         }
