@@ -208,6 +208,8 @@ final class ScanStore: ObservableObject {
         let throttle = self.throttle
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            // Mục đã biến mất thì quên nó đi, kẻo một mục mới trùng tên bị bỏ sót oan.
+            UndeletableMemory.shared.forgetMissing()
             let result = scanner.scan(cancel: token) { p in
                 if let name = p.foundName, p.foundBytes > 0 {
                     DispatchQueue.main.async { [weak self] in
@@ -533,7 +535,7 @@ final class ScanStore: ObservableObject {
 
     /// Dựng thẳng màn "đã dọn xong" bằng dữ liệu giả — không quét, không xoá gì cả.
     /// Cần khi xem lại bố cục màn này: đi đường thật phải chờ hết một lần quét.
-    func debugDemoDone(withFailures: Bool) {
+    func debugDemoDone() {
         let demo: [(String, String, Int64)] = [
             ("Bộ nhớ đệm hệ thống", "internaldrive", 6_900_000_000),
             ("Thùng rác", "trash", 3_100_000_000),
@@ -545,14 +547,10 @@ final class ScanStore: ObservableObject {
             ScanStage(id: "demo\($0.offset)", title: $0.element.0, icon: $0.element.1)
         }
         stageBytes = Dictionary(uniqueKeysWithValues: demo.enumerated().map { ($0.offset, $0.element.2) })
-        let failures: [(url: URL, reason: String)] = withFailures
-            ? (1...9).map { (URL(fileURLWithPath: "/Library/Caches/com.demo.app/Cache_\($0).db"),
-                             "Tệp đang được một ứng dụng khác mở") }
-            : []
         currentStage = nil
         outcome = CleanOutcome(removedCount: 264, trashedCount: 0,
                                freedBytes: demo.reduce(0) { $0 + $1.2 },
-                               failures: failures, wasCancelled: false, usedAdmin: true)
+                               failures: [], wasCancelled: false, usedAdmin: true)
         statusText = "Đã dọn xong"
         smoother.complete()
         phase = .done

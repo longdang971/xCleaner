@@ -186,6 +186,9 @@ enum Remover {
                         outcome.removedCount += 1
                         outcome.freedBytes += item.size
                     } else {
+                        // Đã chạy bằng root mà vẫn còn thì lần sau cũng vậy: nhớ lại để bộ quét
+                        // thôi mời người dùng dọn một thứ không dọn được.
+                        UndeletableMemory.shared.record(item.url)
                         outcome.failures.append((item.url, "Không xoá được dù đã có quyền quản trị."))
                     }
                     itemFinished(item, gone)

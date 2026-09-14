@@ -173,6 +173,9 @@ extension ModuleScanner {
                   safety: SafetyLevel = .safe) -> CleanItem? {
         guard FileUtils.exists(url) else { return nil }
         guard SafetyGuard.isValid(url) else { return nil }
+        // Thứ đã thử dọn bằng quyền quản trị mà vẫn không xoá nổi thì không đưa vào danh sách
+        // nữa: người dùng chẳng làm gì được với nó ngoài việc nhìn nó nằm đó.
+        guard !UndeletableMemory.shared.contains(url) else { return nil }
         let size = FileUtils.size(of: url, isCancelled: { cancel.isCancelled })
         guard size > 0 else { return nil }
         return CleanItem(url: url,

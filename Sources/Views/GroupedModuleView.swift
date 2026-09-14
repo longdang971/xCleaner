@@ -107,7 +107,7 @@ struct GroupedModuleView: View {
         .onAppear {
             #if DEBUG
             if let want = ProcessInfo.processInfo.environment["XCLEANER_DEMO_DONE"], want != "0" {
-                store.debugDemoDone(withFailures: want == "fail")
+                store.debugDemoDone()
             }
             #endif
         }
@@ -684,8 +684,6 @@ struct DoneScreen: View {
     @ObservedObject var store: ScanStore
     let skin: ModuleSkin
 
-    @State private var showingFailures = false
-
     var body: some View {
         ZStack {
             if let o = store.outcome {
@@ -696,19 +694,6 @@ struct DoneScreen: View {
                          caption: store.statusText, diameter: 180, accent: skin.glow)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }
-        .overlay {
-            if showingFailures, let o = store.outcome {
-                failureSheet(o).zIndex(20)
-            }
-        }
-        .animation(Motion.standard, value: showingFailures)
-        .onAppear {
-            #if DEBUG
-            if ProcessInfo.processInfo.environment["XCLEANER_DEMO_FAILURES"] == "1" {
-                showingFailures = true
-            }
-            #endif
         }
     }
 
@@ -776,88 +761,12 @@ struct DoneScreen: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                Text(summary(o))
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Palette.textSecond)
-                    .multilineTextAlignment(.center)
-
-                if !o.failures.isEmpty {
-                    ActionButton(title: "\(o.failures.count) mục không xoá được",
-                                 systemImage: "exclamationmark.triangle.fill",
-                                 kind: .attention, height: 24) {
-                        showingFailures = true
-                    }
-                    .fixedSize()
-                }
-            }
-            .frame(maxWidth: 640)
+            Text(summary(o))
+                .font(.system(size: 12.5))
+                .foregroundStyle(Palette.textSecond)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 640)
         }
-    }
-
-    // MARK: Danh sách mục không xoá được
-
-    /// Để trong lớp phủ chứ không chen vào giữa màn hình: bình thường nó rỗng, mà khi có thì
-    /// cũng không nên đẩy con số tổng và lưới thẻ xuống.
-    private func failureSheet(_ o: CleanOutcome) -> some View {
-        ZStack {
-            Color.black.opacity(0.7)
-                .ignoresSafeArea()
-                .onTapGesture { showingFailures = false }
-
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Palette.warning)
-                    Text("\(o.failures.count) mục không xoá được")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.white)
-                    Spacer(minLength: 12)
-                    ActionButton(title: "Đóng", height: 26) { showingFailures = false }
-                }
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(o.failures.prefix(60).enumerated()), id: \.offset) { _, f in
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(FileUtils.prettyPath(f.url))
-                                    .font(.system(size: 11.5, weight: .medium))
-                                    .foregroundStyle(.white)
-                                    .lineLimit(1).truncationMode(.middle)
-                                Text(f.reason)
-                                    .font(.system(size: 10.5))
-                                    .foregroundStyle(Palette.textFaint)
-                                    .lineLimit(2)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        if o.failures.count > 60 {
-                            Text("… và \(o.failures.count - 60) mục nữa")
-                                .font(.system(size: 10.5))
-                                .foregroundStyle(Palette.textFaint)
-                        }
-                    }
-                    .padding(.trailing, 4)
-                }
-                .scrollIndicators(.never)
-                .frame(maxHeight: 260)
-            }
-            .padding(22)
-            .frame(width: 480)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color(hex: "#1B1026").opacity(0.97))
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color.white.opacity(0.06)))
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.26), lineWidth: 1))
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .shadow(color: .black.opacity(0.45), radius: 34, y: 14)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .transition(.opacity)
     }
 
     private func summary(_ o: CleanOutcome) -> String {

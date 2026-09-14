@@ -32,6 +32,7 @@ enum SelfTest {
         testCleanAccounting()
         testBlockedEmptyContents()
         testSmartScanAlwaysFiveCards()
+        testUndeletableMemory()
         testUpdater()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
@@ -234,6 +235,36 @@ enum SelfTest {
         check("có đúng năm thẻ", groups.count == 5, "(\(groups.count))")
         check("đúng năm thẻ cần có", Set(groups.map(\.id)) == Set(ids),
               "(\(groups.map(\.id).joined(separator: ", ")))")
+    }
+
+    /// Mục đã thử dọn bằng quyền quản trị mà vẫn không xoá nổi thì không được mời người dùng
+    /// dọn lại lần sau — đó là cả nguồn gốc của con số "N mục không xoá được" đã bỏ đi.
+    private static func testUndeletableMemory() {
+        print("[Undeletable] mục không xoá được thì thôi liệt kê")
+        let memory = UndeletableMemory.shared
+        let saved = UserDefaults.standard.stringArray(forKey: "undeletablePaths.v1")
+        memory.forgetAll()
+        defer {
+            memory.forgetAll()
+            if let saved { UserDefaults.standard.set(saved, forKey: "undeletablePaths.v1") }
+        }
+
+        let dir = makeSandbox()
+        let f = dir.appendingPathComponent("cứng-đầu.bin")
+        FileManager.default.createFile(atPath: f.path, contents: Data(repeating: 0x48, count: 2048))
+        let scanner = SystemJunkScanner()
+
+        check("bình thường thì vẫn liệt kê",
+              scanner.makeItem(f, cancel: CancelToken()) != nil)
+
+        memory.record(f)
+        check("đã nhớ là không xoá được thì bỏ qua",
+              scanner.makeItem(f, cancel: CancelToken()) == nil)
+        check("nhớ cả sau khi đọc lại đường dẫn", memory.contains(f))
+
+        try? FileManager.default.removeItem(at: f)
+        memory.forgetMissing()
+        check("mục biến mất thì quên đi", !memory.contains(f))
     }
 
     // MARK: Nhớ lựa chọn
