@@ -96,15 +96,13 @@ enum AuthorizationRunner {
         guard let auth = authRef else { throw Failure.denied(status) }
         defer { AuthorizationFree(auth, [.destroyRights]) }
 
-        // --- Chạy lệnh qua /bin/sh -p -c ---
-        // `AuthorizationExecuteWithPrivileges` chỉ nâng uid *hiệu lực* lên 0, uid thật vẫn là
-        // người dùng. `/bin/sh` trên macOS là bash, mà bash thấy hai uid lệch nhau thì tự hạ
-        // uid hiệu lực về uid thật — cả lệnh chạy bằng quyền thường, "xoá bằng quyền quản trị"
-        // chẳng xoá được gì của root. `-p` (privileged) giữ nguyên uid hiệu lực; khi hai uid đã
-        // bằng nhau thì cờ này không đổi gì cả.
+        // --- Chạy lệnh qua /bin/sh -c ---
+        // Lệnh chạy với euid 0 nhưng ruid vẫn là người dùng. Đã đo trên macOS 26 (nhập mật khẩu
+        // thật): bash ở đây KHÔNG tự hạ quyền khi hai uid lệch nhau, kể cả ở shell con — không
+        // cần `-p`.
         var pipe: UnsafeMutablePointer<FILE>?
         let runStatus: OSStatus = "/bin/sh".withCString { toolPath in
-            strdupArgs(["-p", "-c", command]) { argv in
+            strdupArgs(["-c", command]) { argv in
                 execute(auth, toolPath, [], argv, &pipe)
             }
         }

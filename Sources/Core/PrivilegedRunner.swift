@@ -85,9 +85,7 @@ enum PrivilegedRunner {
         } else {
             body = verdict
         }
-        // `-p`: shell con cũng là bash, không có nó thì chính bước soi lại tự hạ về quyền thường
-        // (xem AuthorizationRunner) và nhìn đĩa bằng con mắt của người dùng thay vì của root.
-        return "/usr/bin/xargs -0 -I @ /bin/sh -p -c '\(body)' sh @ < \(manifest)"
+        return "/usr/bin/xargs -0 -I @ /bin/sh -c '\(body)' sh @ < \(manifest)"
     }
 
     // MARK: - API

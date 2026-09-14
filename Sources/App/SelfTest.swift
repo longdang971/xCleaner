@@ -408,8 +408,8 @@ enum SelfTest {
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/sh")
-        // Đúng như AuthorizationRunner chạy: `/bin/sh -p -c`.
-        proc.arguments = ["-p", "-c", batch.command]
+        // Đúng như AuthorizationRunner chạy: `/bin/sh -c`.
+        proc.arguments = ["-c", batch.command]
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = pipe
