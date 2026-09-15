@@ -91,15 +91,19 @@ struct SystemJunkScanner: ModuleScanner {
             }
         }
 
-        // Danh sách dùng chung của hệ thống
-        let shared: [(String, String)] = [
-            ("com.apple.LSSharedFileList.RecentDocuments.sfl3", "Tài liệu mở gần đây"),
-            ("com.apple.LSSharedFileList.RecentApplications.sfl3", "Ứng dụng mở gần đây"),
-            ("com.apple.LSSharedFileList.RecentServers.sfl3", "Máy chủ đã kết nối"),
-            ("com.apple.LSSharedFileList.RecentHosts.sfl3", "Máy đã kết nối")
+        // Danh sách dùng chung của hệ thống. Khớp theo TÊN và bỏ qua đuôi: macOS 26 đã đổi
+        // `.sfl3` thành `.sfl4`, gắn cứng đuôi là mất trắng cả bốn danh sách. Vẫn là danh
+        // sách trắng — tệp nào không có tên trong bảng dưới thì không đụng đến.
+        let shared: [String: String] = [
+            "com.apple.LSSharedFileList.RecentDocuments": "Tài liệu mở gần đây",
+            "com.apple.LSSharedFileList.RecentApplications": "Ứng dụng mở gần đây",
+            "com.apple.LSSharedFileList.RecentServers": "Máy chủ đã kết nối",
+            "com.apple.LSSharedFileList.RecentHosts": "Máy đã kết nối"
         ]
-        for (file, label) in shared {
-            add(base.appendingPathComponent(file), name: label, detail: "Danh sách của Finder")
+        for file in FileUtils.children(of: base) {
+            if cancel.isCancelled { break }
+            guard let label = shared[file.deletingPathExtension().lastPathComponent] else { continue }
+            add(file, name: label, detail: "Danh sách của Finder")
         }
 
         // "Mở gần đây" của từng ứng dụng

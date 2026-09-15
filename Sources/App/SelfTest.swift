@@ -723,28 +723,36 @@ enum SelfTest {
         try? fm.createDirectory(at: perApp, withIntermediateDirectories: true)
 
         let blob = Data(repeating: 3, count: 4096)
-        for f in ["com.apple.LSSharedFileList.RecentDocuments.sfl3",
-                  "com.apple.LSSharedFileList.RecentApplications.sfl3",
-                  "com.apple.LSSharedFileList.FavoriteItems.sfl3",
-                  "com.apple.LSSharedFileList.FavoriteVolumes.sfl3"] {
+        // macOS 26 trở đi đặt đuôi .sfl4; .sfl3 là của các bản cũ. Phải bắt được cả hai,
+        // và phải bắt theo tên chứ không theo đuôi — Apple còn đổi đuôi nữa.
+        for f in ["com.apple.LSSharedFileList.RecentDocuments.sfl4",
+                  "com.apple.LSSharedFileList.RecentApplications.sfl4",
+                  "com.apple.LSSharedFileList.RecentServers.sfl3",
+                  "com.apple.LSSharedFileList.ProjectsItems.sfl4",
+                  "com.apple.LSSharedFileList.FavoriteItems.sfl4",
+                  "com.apple.LSSharedFileList.FavoriteVolumes.sfl4"] {
             fm.createFile(atPath: base.appendingPathComponent(f).path, contents: blob)
         }
-        fm.createFile(atPath: perApp.appendingPathComponent("com.apple.TextEdit.sfl3").path,
+        fm.createFile(atPath: perApp.appendingPathComponent("com.apple.TextEdit.sfl4").path,
                       contents: blob)
 
         let items = SystemJunkScanner().recentLists(root: base, cancel: CancelToken())
         let names = Set(items.map(\.url.lastPathComponent))
 
-        check("tìm ra tài liệu mở gần đây",
-              names.contains("com.apple.LSSharedFileList.RecentDocuments.sfl3"))
-        check("tìm ra ứng dụng mở gần đây",
-              names.contains("com.apple.LSSharedFileList.RecentApplications.sfl3"))
+        check("tìm ra tài liệu mở gần đây (.sfl4)",
+              names.contains("com.apple.LSSharedFileList.RecentDocuments.sfl4"))
+        check("tìm ra ứng dụng mở gần đây (.sfl4)",
+              names.contains("com.apple.LSSharedFileList.RecentApplications.sfl4"))
+        check("vẫn bắt được đuôi .sfl3 của macOS cũ",
+              names.contains("com.apple.LSSharedFileList.RecentServers.sfl3"))
         check("tìm ra danh sách riêng của từng app",
-              names.contains("com.apple.TextEdit.sfl3"))
+              names.contains("com.apple.TextEdit.sfl4"))
         check("KHÔNG đụng mục yêu thích Finder",
-              !names.contains("com.apple.LSSharedFileList.FavoriteItems.sfl3"))
+              !names.contains("com.apple.LSSharedFileList.FavoriteItems.sfl4"))
         check("KHÔNG đụng ổ đĩa yêu thích",
-              !names.contains("com.apple.LSSharedFileList.FavoriteVolumes.sfl3"))
+              !names.contains("com.apple.LSSharedFileList.FavoriteVolumes.sfl4"))
+        check("KHÔNG đụng danh sách Projects của Finder",
+              !names.contains("com.apple.LSSharedFileList.ProjectsItems.sfl4"))
         check("mặc định không chọn sẵn", items.allSatisfy { !$0.defaultSelected })
         check("xoá cả tệp chứ không chỉ dọn ruột", items.allSatisfy { !$0.emptyContentsOnly })
     }
