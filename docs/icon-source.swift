@@ -1,51 +1,19 @@
-// Dựng biểu tượng xCleaner bằng Core Graphics rồi đóng gói thành .icns.
-//   swift docs/icon-source.swift && iconutil -c icns /tmp/xCleaner.iconset -o Resources/AppIcon.icns
+// Dựng biểu tượng xCleaner (bản phẳng, hợp Liquid Glass của macOS 26/27) bằng Core Graphics.
+//   swiftc -O docs/icon-source.swift -o /tmp/iconrender && /tmp/iconrender <thư mục ra>
+//   iconutil -c icns <thư mục ra>/xCleaner.iconset -o Resources/AppIcon.icns
 //
-// Hình: squircle gradient xanh → tím theo phong cách macOS, trên mặt là một "tia sáng" bốn cánh
-// cùng hai tia nhỏ — cùng ngôn ngữ hình với biểu tượng trong sidebar.
+// Hình: nền hồng mận của Quét thông minh; ngôi sao bốn cánh trắng ở giữa, vòng quét xanh lá ôm
+// quanh như vòng % của nút Quét. Chỉ dùng mảng màu phẳng xếp lớp — không tự vẽ viền, vát cạnh
+// hay vệt bóng, vì hệ thống tự thêm hiệu ứng kính lên icon.
 
 import Foundation
 import CoreGraphics
 import AppKit
 
 let canvas: CGFloat = 1024
-// Apple để nội dung icon chiếm 824/1024 và đẩy xuống 1 chút cho cân với bóng đổ.
+// Lưới icon macOS: thân icon 824/1024, hạ xuống một chút cho cân với bóng đổ.
 let plateSize: CGFloat = 824
-let plateOrigin = CGPoint(x: (canvas - plateSize) / 2, y: (canvas - plateSize) / 2 - 8)
-
-/// Đường bao squircle (superellipse) — mềm hơn rounded rect thường.
-func squirclePath(rect: CGRect, n: CGFloat = 5) -> CGPath {
-    let path = CGMutablePath()
-    let a = rect.width / 2, b = rect.height / 2
-    let cx = rect.midX, cy = rect.midY
-    let steps = 720
-    for i in 0...steps {
-        let t = CGFloat(i) / CGFloat(steps) * 2 * .pi
-        let ct = cos(t), st = sin(t)
-        let x = cx + a * CGFloat(copysign(pow(abs(Double(ct)), 2.0 / Double(n)), Double(ct)))
-        let y = cy + b * CGFloat(copysign(pow(abs(Double(st)), 2.0 / Double(n)), Double(st)))
-        if i == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
-    }
-    path.closeSubpath()
-    return path
-}
-
-/// Ngôi sao bốn cánh với cạnh lõm (kiểu "sparkle" của SF Symbols).
-func sparklePath(center: CGPoint, radius r: CGFloat, waist: CGFloat = 0.26) -> CGPath {
-    let p = CGMutablePath()
-    let w = r * waist
-    p.move(to: CGPoint(x: center.x, y: center.y + r))
-    p.addQuadCurve(to: CGPoint(x: center.x + r, y: center.y),
-                   control: CGPoint(x: center.x + w, y: center.y + w))
-    p.addQuadCurve(to: CGPoint(x: center.x, y: center.y - r),
-                   control: CGPoint(x: center.x + w, y: center.y - w))
-    p.addQuadCurve(to: CGPoint(x: center.x - r, y: center.y),
-                   control: CGPoint(x: center.x - w, y: center.y - w))
-    p.addQuadCurve(to: CGPoint(x: center.x, y: center.y + r),
-                   control: CGPoint(x: center.x - w, y: center.y + w))
-    p.closeSubpath()
-    return p
-}
+let plateOrigin = CGPoint(x: (canvas - plateSize) / 2, y: (canvas - plateSize) / 2 - 10)
 
 func color(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
     CGColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
@@ -53,97 +21,133 @@ func color(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
             blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
 }
 
-func drawIcon(into ctx: CGContext) {
-    let space = CGColorSpaceCreateDeviceRGB()
-    ctx.setAllowsAntialiasing(true)
-    ctx.interpolationQuality = .high
+func gradient(_ colors: [CGColor], _ locations: [CGFloat]) -> CGGradient {
+    CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+               colors: colors as CFArray, locations: locations)!
+}
 
-    let plateRect = CGRect(origin: plateOrigin, size: CGSize(width: plateSize, height: plateSize))
+/// Squircle (superellipse) — góc mềm như icon hệ thống.
+func squirclePath(rect: CGRect, n: Double = 5) -> CGPath {
+    let path = CGMutablePath()
+    let a = rect.width / 2, b = rect.height / 2
+    for i in 0...720 {
+        let t = Double(i) / 720 * 2 * .pi
+        let x = rect.midX + a * CGFloat(copysign(pow(abs(cos(t)), 2 / n), cos(t)))
+        let y = rect.midY + b * CGFloat(copysign(pow(abs(sin(t)), 2 / n), sin(t)))
+        i == 0 ? path.move(to: CGPoint(x: x, y: y)) : path.addLine(to: CGPoint(x: x, y: y))
+    }
+    path.closeSubpath()
+    return path
+}
+
+/// Ngôi sao bốn cánh cạnh lõm.
+func sparklePath(center c: CGPoint, radius r: CGFloat, waist: CGFloat = 0.22) -> CGPath {
+    let p = CGMutablePath()
+    let w = r * waist
+    p.move(to: CGPoint(x: c.x, y: c.y + r))
+    p.addQuadCurve(to: CGPoint(x: c.x + r, y: c.y), control: CGPoint(x: c.x + w, y: c.y + w))
+    p.addQuadCurve(to: CGPoint(x: c.x, y: c.y - r), control: CGPoint(x: c.x + w, y: c.y - w))
+    p.addQuadCurve(to: CGPoint(x: c.x - r, y: c.y), control: CGPoint(x: c.x - w, y: c.y - w))
+    p.addQuadCurve(to: CGPoint(x: c.x, y: c.y + r), control: CGPoint(x: c.x - w, y: c.y + w))
+    p.closeSubpath()
+    return p
+}
+
+/// Tỉ lệ pixel/canvas của cỡ đang vẽ. `CGContext.setShadow` tính offset và blur theo pixel THẬT,
+/// không theo CTM — không nhân vào thì ở cỡ 128 bóng to gấp 8 lần và bị cắt thành ô vuông ở mép ảnh.
+var shadowScale: CGFloat = 1
+
+/// `small` = cỡ 16/32: bỏ sao phụ, nét dày hơn để không nát thành vệt mờ.
+func drawIcon(into ctx: CGContext, small: Bool) {
+    ctx.setAllowsAntialiasing(true)
+
+    let inset: CGFloat = small ? 30 : 0
+    let size = plateSize + inset * 2
+    let plateRect = CGRect(x: plateOrigin.x - inset, y: plateOrigin.y - inset, width: size, height: size)
     let plate = squirclePath(rect: plateRect)
 
-    // Bóng đổ dưới đế
+    // --- Nền: một gradient dọc nhẹ, không quầng sáng ---
     ctx.saveGState()
-    ctx.setShadow(offset: CGSize(width: 0, height: -18), blur: 46, color: color(0x0B1020, 0.34))
+    ctx.setShadow(offset: CGSize(width: 0, height: -10 * shadowScale), blur: 24 * shadowScale,
+                  color: color(0x000000, 0.22))
     ctx.addPath(plate)
-    ctx.setFillColor(color(0x5E7CF5))
+    ctx.setFillColor(color(0x9A1A74))
     ctx.fillPath()
     ctx.restoreGState()
 
-    // Nền gradient chéo
     ctx.saveGState()
     ctx.addPath(plate); ctx.clip()
-    let bg = CGGradient(colorsSpace: space,
-                        colors: [color(0x4C6FEF), color(0x7C5BEE), color(0xA472FF)] as CFArray,
-                        locations: [0, 0.55, 1])!
-    ctx.drawLinearGradient(bg,
-                           start: CGPoint(x: plateRect.minX, y: plateRect.maxY),
-                           end: CGPoint(x: plateRect.maxX, y: plateRect.minY),
-                           options: [])
-
-    // Quầng sáng góc trên trái cho khối có chiều sâu
-    let glow = CGGradient(colorsSpace: space,
-                          colors: [color(0xFFFFFF, 0.42), color(0xFFFFFF, 0)] as CFArray,
-                          locations: [0, 1])!
-    ctx.drawRadialGradient(glow,
-                           startCenter: CGPoint(x: plateRect.minX + plateSize * 0.26,
-                                                y: plateRect.maxY - plateSize * 0.16),
-                           startRadius: 0,
-                           endCenter: CGPoint(x: plateRect.minX + plateSize * 0.26,
-                                              y: plateRect.maxY - plateSize * 0.16),
-                           endRadius: plateSize * 0.62, options: [])
-
-    // Vệt sáng cong phía dưới, gợi cảm giác "vừa lau xong"
-    ctx.saveGState()
-    let sweep = CGMutablePath()
-    sweep.move(to: CGPoint(x: plateRect.minX, y: plateRect.minY + plateSize * 0.30))
-    sweep.addQuadCurve(to: CGPoint(x: plateRect.maxX, y: plateRect.minY + plateSize * 0.16),
-                       control: CGPoint(x: plateRect.midX, y: plateRect.minY - plateSize * 0.06))
-    sweep.addLine(to: CGPoint(x: plateRect.maxX, y: plateRect.minY))
-    sweep.addLine(to: CGPoint(x: plateRect.minX, y: plateRect.minY))
-    sweep.closeSubpath()
-    ctx.addPath(sweep)
-    ctx.setFillColor(color(0x2B3A8F, 0.28))
-    ctx.fillPath()
-    ctx.restoreGState()
+    ctx.drawLinearGradient(gradient([color(0xC0288A), color(0x7A1260)], [0, 1]),
+                           start: CGPoint(x: 0, y: plateRect.maxY),
+                           end: CGPoint(x: 0, y: plateRect.minY), options: [])
     ctx.restoreGState()
 
-    // Viền trong mảnh cho cạnh sắc nét
+    let c = CGPoint(x: plateRect.midX, y: plateRect.midY)
+
+    // --- Vòng quét: rãnh mờ + cung xanh đặc, đầu tròn ---
+    let ringR = size * (small ? 0.37 : 0.355)
+    let ringW = size * (small ? 0.08 : 0.05)
     ctx.saveGState()
-    ctx.addPath(plate)
-    ctx.setStrokeColor(color(0xFFFFFF, 0.22))
-    ctx.setLineWidth(3)
+    ctx.setLineWidth(ringW)
+    ctx.setStrokeColor(color(0xFFFFFF, 0.14))
+    ctx.addEllipse(in: CGRect(x: c.x - ringR, y: c.y - ringR, width: ringR * 2, height: ringR * 2))
+    ctx.strokePath()
+
+    let start = CGFloat.pi / 2                  // đỉnh
+    let end = start - CGFloat.pi * 1.5          // chạy theo chiều kim đồng hồ tới 9 giờ
+    ctx.setLineCap(.round)
+    ctx.setStrokeColor(color(0x4ADE80))
+    ctx.addArc(center: c, radius: ringR, startAngle: start, endAngle: end, clockwise: true)
     ctx.strokePath()
     ctx.restoreGState()
 
-    // Tia sáng chính
-    let c = CGPoint(x: plateRect.midX - plateSize * 0.04, y: plateRect.midY + plateSize * 0.02)
+    // --- Ngôi sao chính: 8 mặt cắt, mỗi mặt MỘT màu đặc (không gradient, không gờ sáng) —
+    // vẫn đọc ra khối pha lê nhưng phẳng như icon hệ thống. Đèn từ trên-trái.
+    let R = size * (small ? 0.25 : 0.225)
+    let star = sparklePath(center: c, radius: R)
     ctx.saveGState()
-    ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 26, color: color(0x21295C, 0.45))
-    ctx.addPath(sparklePath(center: c, radius: plateSize * 0.30))
-    ctx.setFillColor(color(0xFFFFFF, 0.97))
+    ctx.setShadow(offset: CGSize(width: 0, height: -6 * shadowScale), blur: 18 * shadowScale,
+                  color: color(0x3A0629, 0.35))
+    ctx.addPath(star)
+    ctx.setFillColor(color(0xFFFFFF))
     ctx.fillPath()
     ctx.restoreGState()
+    if !small {
+        ctx.saveGState()
+        ctx.addPath(star); ctx.clip()
+        let light = CGFloat.pi * 0.75
+        for k in 0..<4 {
+            let theta = CGFloat.pi / 2 - CGFloat(k) * .pi / 2
+            for s in [-1.0, 1.0] as [CGFloat] {
+                let facet = CGMutablePath()
+                facet.move(to: c)
+                facet.addLine(to: CGPoint(x: c.x + R * 1.1 * cos(theta), y: c.y + R * 1.1 * sin(theta)))
+                let side = theta + s * .pi / 4
+                facet.addLine(to: CGPoint(x: c.x + R * 1.5 * cos(side), y: c.y + R * 1.5 * sin(side)))
+                facet.closeSubpath()
+                let b = 0.5 + 0.5 * cos(theta + s * .pi / 8 - light)
+                // Bốn nấc: trắng → hồng phấn → hồng → hồng đậm.
+                let tones: [UInt32] = [0xE879B9, 0xF5A8D2, 0xFCD7EA, 0xFFFFFF]
+                ctx.addPath(facet)
+                ctx.setFillColor(color(tones[min(3, Int(b * 4))]))
+                ctx.fillPath()
+            }
+        }
+        ctx.restoreGState()
+    }
 
-    // Hai tia phụ
-    ctx.saveGState()
-    ctx.setShadow(offset: CGSize(width: 0, height: -4), blur: 14, color: color(0x21295C, 0.35))
-    ctx.addPath(sparklePath(center: CGPoint(x: plateRect.midX + plateSize * 0.26,
-                                            y: plateRect.midY + plateSize * 0.25),
-                            radius: plateSize * 0.115))
-    ctx.setFillColor(color(0xFFFFFF, 0.92))
-    ctx.fillPath()
+    guard !small else { return }
 
-    ctx.addPath(sparklePath(center: CGPoint(x: plateRect.midX + plateSize * 0.22,
-                                            y: plateRect.midY - plateSize * 0.22),
-                            radius: plateSize * 0.075))
-    ctx.setFillColor(color(0xFFFFFF, 0.8))
+    // --- Sao phụ ---
+    ctx.addPath(sparklePath(center: CGPoint(x: c.x + size * 0.19, y: c.y + size * 0.19), radius: size * 0.058))
+    ctx.setFillColor(color(0xFFFFFF))
     ctx.fillPath()
-    ctx.restoreGState()
 }
 
 // --- Xuất ra iconset ---
 
-let outDir = URL(fileURLWithPath: "/tmp/xCleaner.iconset")
+let outRoot = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "/tmp")
+let outDir = outRoot.appendingPathComponent("xCleaner.iconset")
 try? FileManager.default.removeItem(at: outDir)
 try! FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
@@ -157,15 +161,14 @@ let sizes: [(Int, String)] = [
 
 for (px, name) in sizes {
     guard let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8,
-                              bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                              bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                               bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { continue }
-    let scale = CGFloat(px) / canvas
-    ctx.scaleBy(x: scale, y: scale)
-    drawIcon(into: ctx)
+    ctx.scaleBy(x: CGFloat(px) / canvas, y: CGFloat(px) / canvas)
+    shadowScale = CGFloat(px) / canvas
+    drawIcon(into: ctx, small: px <= 32)
     guard let image = ctx.makeImage() else { continue }
     let rep = NSBitmapImageRep(cgImage: image)
     rep.size = NSSize(width: px, height: px)
-    guard let data = rep.representation(using: .png, properties: [:]) else { continue }
-    try! data.write(to: outDir.appendingPathComponent("\(name).png"))
+    try! rep.representation(using: .png, properties: [:])!.write(to: outDir.appendingPathComponent("\(name).png"))
 }
 print("Đã ghi \(sizes.count) tệp PNG vào \(outDir.path)")
