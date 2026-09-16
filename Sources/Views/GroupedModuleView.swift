@@ -55,11 +55,7 @@ struct GroupedModuleView: View {
                                     onToggleGroup: { store.toggleGroup(group.id) },
                                     onToggleItem: { store.toggleItem(groupID: group.id, itemID: $0) },
                                     onToggleCategory: { store.toggleCategory(groupID: group.id, category: $0) },
-                                    onQuitApp: { store.quitApp(groupID: group.id) },
-                                    onClean: {
-                                        reviewing = nil
-                                        store.clean(groupID: group.id)
-                                    })
+                                    onQuitApp: { store.quitApp(groupID: group.id) })
                     .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
                                             removal: .opacity))
                 } else {
@@ -384,7 +380,6 @@ struct GroupDetailView: View {
     var onToggleItem: (UUID) -> Void
     var onToggleCategory: (String) -> Void
     var onQuitApp: () -> Void
-    var onClean: () -> Void
 
     private var sections: [(title: String, items: [CleanItem], hasCategory: Bool)] {
         if group.categories.isEmpty {
@@ -421,13 +416,12 @@ struct GroupDetailView: View {
                         }
                     }
                     .padding(.horizontal, Metrics.contentPadding)
-                    .padding(.bottom, 140)
+                    .padding(.bottom, 40)
                 }
 
-                BottomFade(height: 190)
+                BottomFade(height: 60)
             }
         }
-        .overlay(alignment: .bottom) { cleanButton }
     }
 
     // MARK: Đầu trang
@@ -497,12 +491,6 @@ struct GroupDetailView: View {
         .padding(.vertical, 6)
         .background(Capsule().fill(Palette.warning))
         .clipShape(Capsule())
-    }
-
-    private var cleanButton: some View {
-        CircleActionButton(title: "Dọn", accent: skin.action,
-                           isEnabled: groupSelectedSize > 0, action: onClean)
-            .padding(.bottom, 22)
     }
 
     static func icon(forPart part: String) -> String {

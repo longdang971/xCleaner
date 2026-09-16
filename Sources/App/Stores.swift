@@ -336,12 +336,14 @@ final class ScanStore: ObservableObject {
 
     // MARK: Dọn
 
-    /// - Parameter groupID: chỉ dọn nhóm này; bỏ trống thì dọn mọi thứ đang được chọn.
-    func clean(groupID: String? = nil) {
+    /// Dọn mọi thứ đang được chọn ở tất cả các thẻ.
+    ///
+    /// Cố ý không có đường dọn riêng một thẻ: trang chi tiết từng có nút "Dọn" giống hệt nút
+    /// ngoài lưới nhưng chỉ dọn thẻ đang xem. Bấm vào thân thẻ là lọt vào trang đó, bấm "Dọn"
+    /// thì chỉ mỗi Nhật ký được dọn và người dùng tưởng app hỏng.
+    func clean() {
         // Xếp theo nhóm để lúc dọn, các ô lần lượt sáng lên đúng thứ tự người dùng nhìn thấy.
-        let sourceGroups = groupID == nil
-            ? groups.filter { $0.items.contains(where: \.isSelected) }
-            : groups.filter { $0.id == groupID && $0.items.contains(where: \.isSelected) }
+        let sourceGroups = groups.filter { $0.items.contains(where: \.isSelected) }
         guard !sourceGroups.isEmpty else { return }
 
         // Ứng dụng nào đang mở mà lần dọn này sẽ đụng vào? Hỏi trước, rồi mới xoá.
