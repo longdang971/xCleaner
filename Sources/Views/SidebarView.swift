@@ -55,14 +55,25 @@ struct SidebarView: View {
             // như hai app khác nhau ghép lại. Nay là đúng gradient của trang, chỉ tối hơn một
             // bậc — vẫn tách được khỏi nội dung nhờ bóng bên phải.
             ZStack {
-                if expanded {
-                    LinearGradient(colors: [skin.mid, skin.deep],
-                                   startPoint: .top, endPoint: .bottom)
-                }
-                LinearGradient(colors: [.black.opacity(expanded ? 0.34 : 0.12),
-                                        .black.opacity(expanded ? 0.44 : 0.22)],
+                // Cả hai lớp đều LUÔN tồn tại, chỉ đổi độ mờ.
+                //
+                // `LinearGradient` không nội suy được màu: đổi màu bên trong nó, hay dựng/gỡ
+                // nó bằng `if`, đều là một cú nhảy tức thì giữa chừng animation — rê chuột qua
+                // lại mép sidebar là thấy nháy màu. Độ mờ thì nội suy mượt, nên chuyển động
+                // bám đúng cùng nhịp với bề ngang đang co giãn.
+                LinearGradient(colors: [skin.mid, skin.deep],
                                startPoint: .top, endPoint: .bottom)
+                    .opacity(expanded ? 1 : 0)
+                // Tỉ lệ đậm nhạt nằm trong chính gradient, còn mức tối chung nằm ở `opacity`:
+                // thu gọn 0,22 → đen 0,12 ở đỉnh và 0,22 ở đáy, nở ra 0,44 → 0,24 và 0,44.
+                LinearGradient(colors: [.black.opacity(0.55), .black],
+                               startPoint: .top, endPoint: .bottom)
+                    .opacity(expanded ? 0.44 : 0.22)
             }
+            // Màu chạy nhanh hơn bề ngang (0,14s so với lò xo 0,4s). Cùng nhịp với bề ngang thì
+            // suốt quãng dải đang nở, nền còn nửa trong suốt và chữ của thẻ phía sau lấp ló qua
+            // — cũng đọc ra thành "nháy".
+            .animation(.easeOut(duration: 0.14), value: expanded)
             .ignoresSafeArea()
         }
         .shadow(color: .black.opacity(expanded ? 0.35 : 0), radius: 24, x: 6)
