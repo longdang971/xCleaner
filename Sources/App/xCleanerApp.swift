@@ -16,9 +16,8 @@ struct xCleanerApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
-        // Cao hơn 760 của bản trước: dải trong suốt 100pt chừa ở đáy cho nút tròn ăn mất
-        // chừng ấy chiều cao nội dung, để nguyên thì khối minh hoạ ở màn khởi đầu bị nén sát
-        // vào nút.
+        // Chiều cao phải dư ra: dải trong suốt chừa ở đáy cho nút tròn (100pt) ăn mất chừng ấy
+        // chiều cao nội dung, nên thấp hơn 780 là khối minh hoạ ở màn khởi đầu bị nén sát vào nút.
         .defaultSize(width: 1140, height: 780)
         .commands {
             CommandGroup(replacing: .newItem) { }
