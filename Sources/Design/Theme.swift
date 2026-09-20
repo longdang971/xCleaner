@@ -138,6 +138,12 @@ enum Metrics {
     static let sidebarExpanded: CGFloat = 252
     static let contentPadding: CGFloat = 26
     static let titleBarHeight: CGFloat = 46
+
+    /// Khoảng cách từ đáy cửa sổ tới nút tròn chính — cố ý ÂM: nút thò một phần ra ngoài mép
+    /// dưới và bị chính cửa sổ cắt, như nút "Scan" của CleanMyMac. Nút đứng hẳn trong khung
+    /// trông như một nút bình thường bị đặt lệch xuống; cắt bớt thì nó thành một phần của
+    /// khung cửa sổ. Một chỗ đổi, cả chín nút trong app đi theo.
+    static let actionButtonBottom: CGFloat = -26
 }
 
 enum Motion {

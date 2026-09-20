@@ -98,7 +98,7 @@ struct DuplicatesView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottom) {
             CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
-                .padding(.bottom, 22)
+                .padding(.bottom, Metrics.actionButtonBottom)
         }
     }
 
@@ -110,7 +110,7 @@ struct DuplicatesView: View {
             CircleActionButton(title: "Xoá", accent: skin.action,
                                isEnabled: !store.selected.isEmpty) { confirming = true }
         }
-        .padding(.bottom, 18)
+        .padding(.bottom, Metrics.actionButtonBottom)
     }
 
     private func pickRoots() {

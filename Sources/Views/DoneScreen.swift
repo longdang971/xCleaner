@@ -10,7 +10,9 @@ import AppKit
 /// đã xem ở màn kết quả trước khi bấm Dọn rồi, nhắc lại không giúp họ làm gì tiếp. Nay bỏ hẳn:
 /// một dấu ✓ lớn, một con số lớn, và nút "Xong".
 ///
-/// Khung chung của bốn màn vẫn giữ: số lớn ở trên, nút tròn ở đáy, "Quét lại" ở góc trên phải.
+/// Khung chung của bốn màn vẫn giữ: số lớn ở trên, nút tròn ở đáy. Không có nút "Quét lại":
+/// quét lại ngay sau khi vừa dọn xong là việc chẳng ai làm, và nút đó cướp mất sự tĩnh lặng
+/// của màn duy nhất trong app không có gì phải bấm ngoài "Xong".
 struct DoneScreen: View {
     @ObservedObject var store: ScanStore
     let skin: ModuleSkin
@@ -95,20 +97,12 @@ struct DoneScreen: View {
                 Spacer(minLength: 12)
 
                 CircleActionButton(title: "Xong", accent: skin.action) { store.backToStart() }
-                    .padding(.bottom, 22)
+                    .padding(.bottom, Metrics.actionButtonBottom)
                     .modifier(RiseIn(revealed: revealed, delay: 0.95))
             }
-            // Phải căng hết khung. Hồi còn lưới thẻ, chính lưới kéo `VStack` rộng bằng cửa sổ;
-            // bỏ lưới đi thì bề ngang co lại bằng dòng chữ dài nhất, và nút "Quét lại" neo
-            // `.topTrailing` bên dưới tụt vào giữa màn theo — trông như đặt lệch.
+            // Phải căng hết khung, nếu không bề ngang co lại bằng dòng chữ dài nhất và khối nội
+            // dung không còn nằm giữa cửa sổ.
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .overlay(alignment: .topTrailing) {
-            IconToolbar(actions: [
-                .init(icon: "arrow.clockwise", help: "Quét lại") { store.scan() }
-            ])
-            .padding(.trailing, Metrics.contentPadding)
-            .padding(.top, 6)
         }
         .onAppear {
             revealed = true

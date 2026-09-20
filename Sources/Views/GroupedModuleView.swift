@@ -157,7 +157,7 @@ struct GroupedModuleView: View {
         .overlay(alignment: .bottom) {
             if store.phase != .scanning {
                 CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
-                    .padding(.bottom, 22)
+                    .padding(.bottom, Metrics.actionButtonBottom)
             }
         }
     }
@@ -278,7 +278,7 @@ struct GroupedModuleView: View {
                            isEnabled: store.totalSelected > 0) {
             store.clean()
         }
-        .padding(.bottom, 22)
+        .padding(.bottom, Metrics.actionButtonBottom)
     }
 }
 

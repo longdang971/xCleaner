@@ -243,7 +243,7 @@ struct CircleActionButton: View {
                     // `.medium` chứ không phải `.bold`: chữ trắng trên nền đặc màu vốn đã dày
                     // sẵn về mặt thị giác, thêm nét đậm nữa thì "Quét"/"Dọn"/"Xong" bè ra.
                     // Bóng cũng nhẹ đi theo — bóng đậm quanh chữ mảnh trông như nét viền.
-                    .font(.system(size: 19, weight: .medium))
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)

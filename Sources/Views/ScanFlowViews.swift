@@ -235,7 +235,7 @@ struct ScanningView: View {
 
             CircleActionButton(title: "Dừng", accent: skin.action,
                                progress: progress, action: onStop)
-                .padding(.bottom, 22)
+                .padding(.bottom, Metrics.actionButtonBottom)
         }
     }
 
@@ -295,7 +295,7 @@ struct CleaningView: View {
 
             CircleActionButton(title: "Dừng", accent: skin.action,
                                progress: progress, action: onStop)
-                .padding(.bottom, 22)
+                .padding(.bottom, Metrics.actionButtonBottom)
         }
     }
 
