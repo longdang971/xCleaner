@@ -277,6 +277,11 @@ struct CircleActionButton: View {
                     // nền, bóng dài chỉ tổ bị mép cửa sổ cắt ngang thành một đường.
                     radius: hovering ? 20 : 13, y: 2)
             .brightness(hovering ? 0.06 : 0)
+            // Phình nhẹ khi rê chuột vào. 1,06 trên nút 84pt là +5pt — đủ để tay thấy nút
+            // "sống", chưa đủ để nó chạm mép bướu tròn 70 của `CardShape` (nút + bóng lúc hover
+            // là (42+20+2)×1,06 ≈ 68). Phình hơn nữa là quầng sáng bị khuôn cắt xén mất một
+            // vành cung.
+            .scaleEffect(hovering && isEnabled ? 1.06 : 1)
             .opacity(isEnabled ? 1 : 0.4)
         }
         .buttonStyle(.plain)
