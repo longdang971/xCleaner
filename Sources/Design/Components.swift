@@ -453,19 +453,47 @@ struct DiskUsageRing: View {
     var expanded: Bool
 
     private var used: Int64 { max(0, total - free) }
-    private var ratio: Double { total > 0 ? Double(used) / Double(total) : 0 }
+
+    private var ratio: Double {
+        #if DEBUG
+        // `XCLEANER_DISK_RATIO=0.95` giả mức đầy để xem hai ngưỡng màu kia mà không phải đi
+        // nhồi cho đầy ổ thật.
+        if let fake = ProcessInfo.processInfo.environment["XCLEANER_DISK_RATIO"],
+           let v = Double(fake) { return min(max(v, 0), 1) }
+        #endif
+        return total > 0 ? Double(used) / Double(total) : 0
+    }
 
     var body: some View {
         HStack(spacing: 9) {
             ZStack {
-                Circle().stroke(Color.white.opacity(0.18), lineWidth: 3.5)
+                Circle().stroke(Color.white.opacity(0.14), lineWidth: 4)
                 Circle().trim(from: 0, to: max(0.02, ratio))
-                    .stroke(ratio > 0.9 ? Palette.danger : Color.white.opacity(0.9),
-                            style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                    // Gradient quét theo cung chứ không phải một màu phẳng: đầu cung sáng, thân
+                    // cung đậm, nên nhìn ra được cung chạy tới đâu mà không cần đọc số.
+                    .stroke(AngularGradient(colors: [level.highlight, level.tint, level.highlight],
+                                            center: .center),
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90))
+                    .shadow(color: level.tint.opacity(0.55), radius: 3)
                     .animation(Motion.standard, value: ratio)
+                    .animation(Motion.gentle, value: level.tint)
+
+                // Phần trăm đã dùng, ngay trong lòng vòng tròn: lúc sidebar thu gọn thì đây là
+                // thứ DUY NHẤT nói được tình trạng đĩa — chữ bên cạnh đã bị giấu đi rồi.
+                HStack(spacing: 0.5) {
+                    Text("\(percent)")
+                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                    // Dấu % nhỏ hơn hẳn: thiếu nó thì "25" giữa một vòng tròn cạnh hai con số
+                    // GB rất dễ bị đọc nhầm là dung lượng.
+                    Text("%")
+                        .font(.system(size: 6.5, weight: .bold, design: .rounded))
+                        .baselineOffset(0.5)
+                }
+                .foregroundStyle(Color.white.opacity(0.92))
             }
-            .frame(width: 26, height: 26)
+            .frame(width: 30, height: 30)
 
             if expanded {
                 VStack(alignment: .leading, spacing: 0) {
@@ -475,7 +503,11 @@ struct DiskUsageRing: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Palette.textSecond)
                     Text(savedLine)
-                        .font(.system(size: 10)).foregroundStyle(Palette.textFaint)
+                        .font(.system(size: 10))
+                        // Đã dọn được thì con số ấy là thành quả của chính app — cho nó màu
+                        // xanh "đã sạch"; chưa dọn lần nào thì để chữ mờ như cũ.
+                        .foregroundStyle(ledger.totalFreed > 0
+                                         ? Palette.success.opacity(0.85) : Palette.textFaint)
                 }
                 .fixedSize()
                 .transition(.opacity)
@@ -484,6 +516,19 @@ struct DiskUsageRing: View {
         .onAppear(perform: refresh)
         .onReceive(Timer.publish(every: 20, on: .main, in: .common).autoconnect()) { _ in refresh() }
         .help("Đã dùng \(Fmt.size(used)) trên \(Fmt.size(total)) · còn trống \(Fmt.size(free))\n\(savedLine)")
+    }
+
+    private var percent: Int { Int((ratio * 100).rounded()) }
+
+    /// Màu vòng tròn nói luôn tình trạng, không bắt người dùng tự so hai con số: rộng rãi thì
+    /// xanh lục, bắt đầu chật thì hổ phách, sắp hết thì hồng đỏ. Ngưỡng 70/90 lấy theo lúc
+    /// macOS bắt đầu chậm đi vì thiếu chỗ ghi tạm.
+    private var level: (tint: Color, highlight: Color) {
+        switch ratio {
+        case ..<0.70: return (Color(hex: "#34D399"), Color(hex: "#A7F3D0"))
+        case ..<0.90: return (Palette.warning, Color(hex: "#FDE68A"))
+        default:      return (Palette.danger, Color(hex: "#FECDD3"))
+        }
     }
 
     /// Chưa dọn lần nào thì nói thẳng thế, đừng bày ra "0 KB" — nhìn như app hỏng.
