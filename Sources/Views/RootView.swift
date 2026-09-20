@@ -58,7 +58,6 @@ struct RootView: View {
                 Spacer(minLength: 0)
             }
         }
-        .ignoresSafeArea(.container, edges: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Cắt CẢ TRANG theo hình tấm nền, không chỉ riêng lớp nền. Sidebar là anh em cùng
         // ZStack với lớp nền chứ không nằm trong nó, nên nếu chỉ cắt lớp nền thì hộp tối của
@@ -68,6 +67,10 @@ struct RootView: View {
         // Cả trang co lên, chừa dải trong suốt ở đáy cho nút tròn thò xuống. `padding` KHÔNG
         // cắt nội dung, nên nút vẽ tràn vào dải này vẫn hiện trọn vẹn.
         .padding(.bottom, bottomInset)
+        // Phải nằm NGOÀI `clipShape`. Để bên trong thì khuôn cắt lấy theo vùng an toàn — vùng
+        // đã trừ mất dải thanh tiêu đề — nên đỉnh app bị xén một dải trong suốt, ba nút đèn
+        // giao thông nổi trên nền trắng của thứ phía sau.
+        .ignoresSafeArea(.container, edges: .top)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
             bottomInset = 0
         }
