@@ -272,11 +272,7 @@ struct CircleActionButton: View {
             // một gradient đen mờ dần vẽ lên nền trong suốt lộ nguyên vân tròn từng nấc alpha —
             // trên nền đặc thì cùng gradient ấy chìm đi không ai thấy. Bóng đổ theo màu nút
             // (`shadow` bên dưới) là thứ duy nhất còn lại, và bóng thì hệ thống vẽ mượt.
-            // Không còn quầng sáng theo màu nút. Nửa dưới nút nằm ngoài tấm nền, nên quầng
-            // sáng ở đó hắt thẳng lên cửa sổ của app khác — một vệt xanh lạ giữa màn hình. Cắt
-            // riêng phần dưới thì quầng lại đứt thành một đường ngang đúng mép nền, y như lỗi
-            // vẽ. Bỏ cả: viền trắng mảnh đủ tách nút khỏi mọi thứ sau lưng, còn hover đã có
-            // sáng lên và phình to.
+            .background { ButtonAura(accent: accent, lively: hovering) }
             .brightness(hovering ? 0.06 : 0)
             // Phình nhẹ khi rê chuột vào. 1,06 trên nút 84pt là +5pt — đủ để tay thấy nút
             // "sống", chưa đủ để nó chạm mép bướu tròn 70 của `CardShape` (nút + bóng lúc hover
@@ -288,6 +284,87 @@ struct CircleActionButton: View {
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
+    }
+}
+
+/// Quầng sáng sau lưng nút tròn: vài đốm màu nhoè đậm, trôi chậm quanh nút.
+///
+/// Học từ nút "Scan" của CleanMyMac, sau khi chụp màn hình app đó rồi đo: quanh nút của họ là
+/// **nhiều đốm khác màu** (xanh lam, cam ấm, hồng) chứ không phải một quầng đơn sắc, và chúng
+/// **động** — lấy hai khung cách nhau 4 giây, khuếch đại sai khác lên 20 lần thì hiện ra vân
+/// xoáy quanh nút, còn chính nút thì sai khác bằng 0. Biên độ chỉ 18/255, tức là trôi rất chậm,
+/// đủ để mắt thấy "sống" mà không thành thứ nhấp nháy gây phân tâm.
+///
+/// Khác họ một điểm, và là điểm bắt buộc: nửa dưới nút của ta nằm NGOÀI tấm nền, nên aura phải
+/// tắt hẳn trước khi chạm mép nền. Không thì nó hắt lên cửa sổ của app khác, hoặc bị khuôn cắt
+/// xén thành một đường ngang.
+struct ButtonAura: View {
+    let accent: Color
+    /// Rê chuột vào thì sáng hơn một chút — cùng nhịp với nút phình to.
+    var lively: Bool = false
+
+    @State private var spin = false
+
+    private var reduceMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    /// Bốn đốm: màu của nút, một xanh lam lạnh, một vàng ấm, một hồng. Hai màu lạnh-ấm đối nhau
+    /// là thứ làm quầng sáng của CleanMyMac không bị "một cục xanh" — trên nền hồng/chàm/cam của
+    /// từng mục, bộ này đều còn đọc ra được.
+    /// Tầm với của một đốm = khoảng cách khỏi tâm + nửa đường kính + bán kính nhoè. Ở đây
+    /// nhiều nhất là 30 + 40 + 22 = 92 — và chính con số 92 là `Metrics.actionButtonHalo`, tức
+    /// bướu tròn của khuôn cắt. Sửa mấy số dưới đây thì phải sửa cả hằng số đó, không thì aura
+    /// bị xén thành vành cung.
+    private var blobs: [(color: Color, size: CGFloat, distance: CGFloat, angle: Double)] {
+        [(accent,                    80, 26, 90),
+         (Color(hex: "#60A5FA"),     76, 30, 200),
+         (Color(hex: "#FBBF24"),     72, 28, 330),
+         (Color(hex: "#F472B6"),     74, 30, 20)]
+    }
+
+    var body: some View {
+        ZStack {
+            // Một vòng mất cả phút. Đo trên CleanMyMac: hai khung cách nhau 4 giây chỉ sai
+            // khác 18/255. Bản đầu của tôi quay 17 giây một vòng và sai khác lên tới 219 — mắt
+            // đọc ra thành "có cái gì đang quay", tức là một thứ gây phân tâm, chứ không phải
+            // ánh sáng đang thở.
+            ring(of: Array(blobs.prefix(2)), clockwise: true, seconds: 40)
+            ring(of: Array(blobs.suffix(2)), clockwise: false, seconds: 55)
+        }
+        .frame(width: 230, height: 230)
+        .opacity(lively ? 0.78 : 0.5)
+        .animation(Motion.gentle, value: lively)
+        .allowsHitTesting(false)
+        .onAppear { spin = true }
+    }
+
+    private func ring(of items: [(color: Color, size: CGFloat, distance: CGFloat, angle: Double)],
+                      clockwise: Bool, seconds: Double) -> some View {
+        ZStack {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, blob in
+                Circle()
+                    .fill(blob.color)
+                    .frame(width: blob.size, height: blob.size)
+                    .offset(x: cos(blob.angle * .pi / 180) * blob.distance,
+                            y: sin(blob.angle * .pi / 180) * blob.distance)
+            }
+        }
+        // Khung rộng hơn hẳn cụm đốm TRƯỚC khi làm nhoè. `drawingGroup` rasterize đúng bằng
+        // khung của view, mà khung mặc định chỉ ôm sát mấy đốm — phần nhoè tràn ra ngoài bị cắt
+        // cụt, cả cụm hiện ra thành mấy mảng vuông xoay xoay. Đã chụp thấy tận mắt.
+        .frame(width: 230, height: 230)
+        .blur(radius: 22)
+        // Gộp cả cụm thành MỘT lớp rồi mới xoay: xoay từng đốm nhoè riêng là mỗi khung hình
+        // phải làm lại bốn lần blur bán kính 26.
+        .drawingGroup()
+        // Cộng sáng phải đứng SAU `drawingGroup`. Đứng trước thì nó chỉ cộng giữa mấy đốm với
+        // nhau bên trong lớp đã gộp, còn ra tới nền trang thì lại là chồng alpha bình thường.
+        .blendMode(.plusLighter)
+        .rotationEffect(.degrees(spin && !reduceMotion ? (clockwise ? 360 : -360) : 0))
+        .animation(reduceMotion ? nil
+                                : .linear(duration: seconds).repeatForever(autoreverses: false),
+                   value: spin)
     }
 }
 
