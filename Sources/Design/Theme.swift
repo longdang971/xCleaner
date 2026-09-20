@@ -164,6 +164,38 @@ enum Metrics {
     static let actionButtonHalo: CGFloat = 92
 }
 
+/// Đổi trang: trang cũ trượt LÊN rồi tan, trang mới dâng từ dưới lên.
+///
+/// Học từ CleanMyMac — quay video lúc bấm từ Smart Care sang Cleanup, cắt một lát dọc qua giữa
+/// nội dung rồi xếp các khung cạnh nhau thành "dải thời gian" để đo: trang cũ đi lên và mờ dần
+/// trong ~0,2s, nền đổi màu, có một quãng ngắt ~0,13s không trang nào hiện, rồi trang mới dâng
+/// lên trong ~0,2s. Chính quãng ngắt ấy làm cú chuyển đọc ra thành "nhường chỗ" chứ không phải
+/// hai trang chồng lên nhau.
+struct PageShift: ViewModifier {
+    var y: CGFloat
+    var blur: CGFloat
+    var opacity: Double
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(opacity)
+            .blur(radius: blur)
+            .offset(y: y)
+    }
+}
+
+extension AnyTransition {
+    static var pageSwap: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(active: PageShift(y: 30, blur: 9, opacity: 0),
+                                 identity: PageShift(y: 0, blur: 0, opacity: 1))
+                .animation(.easeOut(duration: 0.30).delay(0.28)),
+            removal: .modifier(active: PageShift(y: -34, blur: 9, opacity: 0),
+                               identity: PageShift(y: 0, blur: 0, opacity: 1))
+                .animation(.easeIn(duration: 0.18)))
+    }
+}
+
 enum Motion {
     static let standard = Animation.spring(response: 0.4, dampingFraction: 0.86)
     static let snappy   = Animation.spring(response: 0.26, dampingFraction: 0.9)

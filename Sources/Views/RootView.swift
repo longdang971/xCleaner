@@ -37,6 +37,10 @@ struct RootView: View {
             VStack(spacing: 0) {
                 Spacer().frame(height: Metrics.titleBarHeight)
                 content
+                    // `id` để SwiftUI coi mỗi trang là một view KHÁC — không có nó thì nó chỉ
+                    // thay nội dung tại chỗ và chẳng có gì để trượt.
+                    .id(pageKey)
+                    .transition(.pageSwap)
             }
             .padding(.leading, Metrics.sidebarWidth)
 
@@ -52,8 +56,10 @@ struct RootView: View {
             HStack(spacing: 0) {
                 SidebarView(selection: Binding(get: { state.module },
                                                set: { m in
-                                                   state.module = m
-                                                   state.showSettings = false
+                                                   withAnimation(Motion.standard) {
+                                                       state.module = m
+                                                       state.showSettings = false
+                                                   }
                                                }),
                             settingsActive: state.showSettings,
                             skin: pageSkin) {
