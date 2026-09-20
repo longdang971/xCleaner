@@ -272,10 +272,11 @@ struct CircleActionButton: View {
             // một gradient đen mờ dần vẽ lên nền trong suốt lộ nguyên vân tròn từng nấc alpha —
             // trên nền đặc thì cùng gradient ấy chìm đi không ai thấy. Bóng đổ theo màu nút
             // (`shadow` bên dưới) là thứ duy nhất còn lại, và bóng thì hệ thống vẽ mượt.
-            .shadow(color: accent.opacity(hovering ? 0.85 : 0.55),
-                    // Bóng ngắn lại và không lệch xuống nữa: phần dưới nút nay nằm ngoài tấm
-                    // nền, bóng dài chỉ tổ bị mép cửa sổ cắt ngang thành một đường.
-                    radius: hovering ? 20 : 13, y: 2)
+            // Không còn quầng sáng theo màu nút. Nửa dưới nút nằm ngoài tấm nền, nên quầng
+            // sáng ở đó hắt thẳng lên cửa sổ của app khác — một vệt xanh lạ giữa màn hình. Cắt
+            // riêng phần dưới thì quầng lại đứt thành một đường ngang đúng mép nền, y như lỗi
+            // vẽ. Bỏ cả: viền trắng mảnh đủ tách nút khỏi mọi thứ sau lưng, còn hover đã có
+            // sáng lên và phình to.
             .brightness(hovering ? 0.06 : 0)
             // Phình nhẹ khi rê chuột vào. 1,06 trên nút 84pt là +5pt — đủ để tay thấy nút
             // "sống", chưa đủ để nó chạm mép bướu tròn 70 của `CardShape` (nút + bóng lúc hover

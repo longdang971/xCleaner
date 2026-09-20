@@ -148,19 +148,19 @@ enum Metrics {
     /// Nút tròn vẽ vào đúng dải này. Không có nó thì nút bị cắt ngang ở mép cửa sổ — cửa sổ
     /// luôn cắt mọi thứ vẽ ra ngoài khung của nó.
     ///
-    /// Đủ chỗ cho cả bướu tròn của `CardShape` (76 − 16 = 60 tính từ mép tấm nền). Hụt một
+    /// Đủ chỗ cho cả bướu tròn của `CardShape` (56 − 16 = 40 tính từ mép tấm nền). Hụt một
     /// chút là quầng sáng dưới nút bị mép cửa sổ cắt ngang thành một đường thẳng. Dải này trong
     /// suốt hoàn toàn và cửa sổ đã tắt bóng, nên rộng hơn cũng không ai thấy.
-    static let windowBottomInset: CGFloat = 64
+    static let windowBottomInset: CGFloat = 44
 
     /// Bo góc dưới của tấm nền. Hai góc trên để hệ thống tự bo theo khung cửa sổ.
     static let cardCornerRadius: CGFloat = 16
 
     /// Bán kính vùng chừa cho nút tròn thò ra khỏi tấm nền.
     ///
-    /// Phải tính theo lúc nút ĐANG HOVER, không phải lúc đứng yên: (42 nút + 20 bóng + 2 lệch)
-    /// × 1,06 phình ≈ 68. Để 70 là sát quá, một lần đổi bóng nữa là quầng sáng bị xén vành cung.
-    static let actionButtonHalo: CGFloat = 76
+    /// Nút không còn quầng sáng, nên chỉ cần chứa chính nó lúc phình: 42 × 1,06 ≈ 45. Để 56
+    /// cho rộng tay — khuôn cắt mà sát quá thì chỉ một lần chỉnh hiệu ứng là xén vào mép nút.
+    static let actionButtonHalo: CGFloat = 56
 }
 
 enum Motion {
