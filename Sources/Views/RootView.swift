@@ -123,7 +123,9 @@ struct RootView: View {
         let to = order(module ?? state.module, settings)
         guard from != to else { return }
         pageDirection = to > from ? 1 : -1
-        withAnimation(Motion.standard) {
+        // Lò xo tắt dần hoàn toàn (damping 1): còn nảy thì hai trang vẫn khít nhau, nhưng cú
+        // dừng bị dội lại một nhịp, đọc ra thành "khựng" đúng như người dùng phàn nàn.
+        withAnimation(.spring(response: 0.42, dampingFraction: 1)) {
             if let module { state.module = module }
             state.showSettings = settings
         }

@@ -163,34 +163,24 @@ enum Metrics {
     static let actionButtonHalo: CGFloat = 112
 }
 
-/// Đổi trang: trang cũ trượt LÊN rồi tan, trang mới dâng từ dưới lên.
+/// Đổi trang kiểu băng chuyền: hai trang **dính nhau và đi cùng một chiều**.
 ///
-/// Học từ CleanMyMac — quay video lúc bấm từ Smart Care sang Cleanup, cắt một lát dọc qua giữa
-/// nội dung rồi xếp các khung cạnh nhau thành "dải thời gian" để đo: trang cũ đi lên và mờ dần
-/// trong ~0,2s, nền đổi màu, có một quãng ngắt ~0,13s không trang nào hiện, rồi trang mới dâng
-/// lên trong ~0,2s. Chính quãng ngắt ấy làm cú chuyển đọc ra thành "nhường chỗ" chứ không phải
-/// hai trang chồng lên nhau.
-struct PageShift: ViewModifier, Animatable {
-    /// 0 = đang ở đúng chỗ, 1 = đã đi hết quãng đẩy.
-    var progress: Double
-    var travel: CGFloat
-
-    var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    func body(content: Content) -> some View {
-        let p = min(max(progress, 0), 1)
-        // Đục nguyên trong 45% quãng đầu rồi mới tan. Đây là điểm mấu chốt: bản trước cho độ
-        // đục giảm tuyến tính suốt quãng đẩy, nên lúc trang còn nhìn thấy được thì nó gần như
-        // chưa đi đâu, còn lúc nó đi thì đã mờ gần hết — mắt đọc ra thành "biến mất rồi hiện
-        // ra" chứ không phải một cú đẩy.
-        let fade = min(1, max(0, (p - 0.45) / 0.55))
-        return content
-            .offset(y: travel * CGFloat(p))
-            .opacity(1 - fade)
-            .blur(radius: 5 * p)
+/// Đi xuống danh sách mục thì cả hai cùng trượt lên — trang cũ ra khỏi mép trên đúng lúc trang
+/// mới vào hết từ mép dưới; đi lên thì ngược lại. Không mờ dần, không nhoè, không có quãng chờ:
+/// ở mọi thời điểm hai trang khít nhau như hai ô phim, nên mắt đọc ra là một cú đẩy liên tục
+/// chứ không phải "cái này tan đi rồi cái kia hiện lên".
+///
+/// Dùng `.move` dựng sẵn thay vì `.modifier` tự viết vì một lý do đã đo được: transition kiểu
+/// `.modifier(active:identity:)` trong cây view này KHÔNG chạy animation — kéo thời lượng ra
+/// 2,5 giây rồi quay màn hình vẫn thấy trang mới nằm yên ngay từ khung đầu, trong khi `.move`
+/// thì chạy. `.move` còn tự lấy quãng đẩy bằng đúng chiều cao trang, nên hai trang khít nhau
+/// mà không phải đo chiều cao bằng tay.
+extension AnyTransition {
+    /// `direction` = 1 khi đi XUỐNG danh sách mục, = −1 khi đi lên.
+    static func pageSwap(direction: CGFloat) -> AnyTransition {
+        let down = direction > 0
+        return .asymmetric(insertion: .move(edge: down ? .bottom : .top),
+                           removal: .move(edge: down ? .top : .bottom))
     }
 }
 
@@ -210,27 +200,6 @@ struct PageClip: Shape {
                                 width: buttonRadius * 2,
                                 height: buttonRadius * 2))
         return p
-    }
-}
-
-extension AnyTransition {
-    /// `direction` = 1 khi đi XUỐNG danh sách mục (trang mới dâng từ dưới lên), = −1 khi đi
-    /// lên (trang mới đổ từ trên xuống). Hướng phải theo đúng chỗ người dùng vừa bấm trên
-    /// sidebar, không thì cú chuyển nào cũng như nhau và mất luôn cảm giác đang đi trong một
-    /// danh sách có trên có dưới.
-    ///
-    /// Hai trang chạy CÙNG LÚC và đi ngược chiều nhau — đó là cái làm nó ra "đẩy". Bản trước
-    /// cho trang mới vào sau trang cũ 0,28s, giữa chừng không trang nào hiện, nên người dùng
-    /// chỉ thấy biến mất rồi hiện ra chứ không thấy đẩy.
-    static func pageSwap(direction: CGFloat) -> AnyTransition {
-        let travel: CGFloat = 130
-        return .asymmetric(
-            insertion: .modifier(active: PageShift(progress: 1, travel: travel * direction),
-                                 identity: PageShift(progress: 0, travel: travel * direction))
-                .animation(.spring(response: 0.44, dampingFraction: 0.9)),
-            removal: .modifier(active: PageShift(progress: 1, travel: -travel * direction),
-                               identity: PageShift(progress: 0, travel: -travel * direction))
-                .animation(.spring(response: 0.44, dampingFraction: 0.9)))
     }
 }
 
