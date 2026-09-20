@@ -149,9 +149,10 @@ struct RootView: View {
                 }
             }
         }
-        .transition(.opacity)
-        .id(pageKey)
-        .animation(Motion.standard, value: pageKey)
+        // KHÔNG đặt `.transition`/`.id`/`.animation` ở đây. Ba dòng ấy sót lại từ bản cũ và
+        // chính chúng nuốt mất cú đẩy: lớp trong nhận diện thay trang trước, xử lý bằng một
+        // cú mờ dần, nên lớp ngoài chẳng còn gì để đẩy — trang cũ biến mất rồi trang mới hiện
+        // ra. Việc gán danh tính và hiệu ứng nay nằm hết ở chỗ gọi trong `body`.
     }
 }
 
