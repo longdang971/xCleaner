@@ -240,12 +240,15 @@ struct CircleActionButton: View {
                     Circle().strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5)
                 }
                 Text(title)
-                    .font(.system(size: 19, weight: .bold))
+                    // `.medium` chứ không phải `.bold`: chữ trắng trên nền đặc màu vốn đã dày
+                    // sẵn về mặt thị giác, thêm nét đậm nữa thì "Quét"/"Dọn"/"Xong" bè ra.
+                    // Bóng cũng nhẹ đi theo — bóng đậm quanh chữ mảnh trông như nét viền.
+                    .font(.system(size: 19, weight: .medium))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .padding(.horizontal, 8)
-                    .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                    .shadow(color: .black.opacity(0.22), radius: 2.5, y: 1)
             }
             .frame(width: 84, height: 84)
             .overlay {
