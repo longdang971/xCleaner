@@ -6,6 +6,8 @@ struct SidebarView: View {
     @Binding var selection: CleanModule
     /// Cài đặt là một trang như các mục quét, nên hàng của nó cũng sáng lên khi đang mở.
     var settingsActive: Bool = false
+    /// Tông màu của TRANG đang xem — dải này nở ra thì đục bằng chính màu ấy.
+    var skin: ModuleSkin = ModuleSkin.skin(for: .smartScan)
     var onOpenSettings: () -> Void = {}
 
     @State private var hovered: CleanModule?
@@ -47,12 +49,21 @@ struct SidebarView: View {
         .frame(width: width, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .top)
         .background {
-            // Thu gọn thì gần như chung nền với nội dung; nở ra thì phải đục hẳn,
-            // nếu không chữ của thẻ bên dưới sẽ hiện xuyên qua.
-            LinearGradient(colors: [.black.opacity(expanded ? 0.72 : 0.12),
-                                    .black.opacity(expanded ? 0.82 : 0.22)],
-                           startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
+            // Nở ra thì vẫn phải ĐỤC, nếu không chữ của thẻ bên dưới hiện xuyên qua. Nhưng đục
+            // bằng chính màu của trang chứ không phải bằng màu đen: bản trước phủ đen 72–82%,
+            // dải này hoá ra một mảng gần như đen đặt cạnh nền hồng/chàm/cam của trang, nhìn
+            // như hai app khác nhau ghép lại. Nay là đúng gradient của trang, chỉ tối hơn một
+            // bậc — vẫn tách được khỏi nội dung nhờ bóng bên phải.
+            ZStack {
+                if expanded {
+                    LinearGradient(colors: [skin.mid, skin.deep],
+                                   startPoint: .top, endPoint: .bottom)
+                }
+                LinearGradient(colors: [.black.opacity(expanded ? 0.34 : 0.12),
+                                        .black.opacity(expanded ? 0.44 : 0.22)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+            .ignoresSafeArea()
         }
         .shadow(color: .black.opacity(expanded ? 0.35 : 0), radius: 24, x: 6)
         .onHover { inside in

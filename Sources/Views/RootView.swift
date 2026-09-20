@@ -11,6 +11,9 @@ struct RootView: View {
 
     private var skin: ModuleSkin { ModuleSkin.skin(for: state.module) }
 
+    /// Tông màu của trang đang xem. Khác `skin` ở chỗ trang Cài đặt có tông riêng.
+    private var pageSkin: ModuleSkin { state.showSettings ? .settings : skin }
+
     /// Khoá của trang đang xem. Cài đặt là một trang ngang hàng với các mục quét,
     /// nên chuyển sang nó cũng đổi nền, đổi tiêu đề và chạy đúng hiệu ứng như đổi mục.
     private var pageKey: String { state.showSettings ? "settings" : state.module.rawValue }
@@ -52,7 +55,8 @@ struct RootView: View {
                                                    state.module = m
                                                    state.showSettings = false
                                                }),
-                            settingsActive: state.showSettings) {
+                            settingsActive: state.showSettings,
+                            skin: pageSkin) {
                     withAnimation(Motion.standard) { state.showSettings = true }
                 }
                 Spacer(minLength: 0)
