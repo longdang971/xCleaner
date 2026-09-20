@@ -11,7 +11,10 @@ struct xCleanerApp: App {
             RootView()
                 .environmentObject(state)
                 .environmentObject(state.settings)
-                .frame(minWidth: 980, minHeight: 660)
+                // Chiều cao nhỏ nhất kéo được. 660 là con số từ hồi nội dung còn dùng trọn cửa sổ;
+                // nay đáy chừa 100pt trong suốt cho nút tròn nên ở 660 phần nội dung chỉ còn
+                // 560pt, chật.
+                .frame(minWidth: 980, minHeight: 720)
                 .background(WindowConfigurator())
         }
         .windowStyle(.hiddenTitleBar)
