@@ -29,10 +29,6 @@ struct RootView: View {
                     .opacity(state.showSettings ? 1 : 0)
             }
             .ignoresSafeArea()
-            // Chỉ bo hai góc DƯỚI: hai góc trên đã nằm đúng mép cửa sổ và được hệ thống bo sẵn,
-            // bo thêm lần nữa là hở ra hai lỗ trong suốt ở vai cửa sổ.
-            .clipShape(.rect(bottomLeadingRadius: Metrics.cardCornerRadius,
-                             bottomTrailingRadius: Metrics.cardCornerRadius))
             .animation(Motion.skin, value: pageKey)
 
             VStack(spacing: 0) {
@@ -64,6 +60,11 @@ struct RootView: View {
         }
         .ignoresSafeArea(.container, edges: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Cắt CẢ TRANG theo hình tấm nền, không chỉ riêng lớp nền. Sidebar là anh em cùng
+        // ZStack với lớp nền chứ không nằm trong nó, nên nếu chỉ cắt lớp nền thì hộp tối của
+        // sidebar vẫn vuông góc ở đáy và bóng của nó loang xuống dải trong suốt — đúng chỗ góc
+        // dưới bên trái nhìn như lỗi vẽ. Bướu tròn trong `CardShape` chừa đường cho nút thò ra.
+        .clipShape(CardShape())
         // Cả trang co lên, chừa dải trong suốt ở đáy cho nút tròn thò xuống. `padding` KHÔNG
         // cắt nội dung, nên nút vẽ tràn vào dải này vẫn hiện trọn vẹn.
         .padding(.bottom, bottomInset)

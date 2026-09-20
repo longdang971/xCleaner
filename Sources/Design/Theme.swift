@@ -148,12 +148,16 @@ enum Metrics {
     /// Nút tròn vẽ vào đúng dải này. Không có nó thì nút bị cắt ngang ở mép cửa sổ — cửa sổ
     /// luôn cắt mọi thứ vẽ ra ngoài khung của nó.
     ///
-    /// Đúng bằng phần nút thò ra (26) cộng một chút cho bóng (10). Rộng hơn nữa thì bên dưới
-    /// nút còn một khoảng trống nhìn xuyên xuống desktop — trông như cửa sổ bị hụt một dải.
-    static let windowBottomInset: CGFloat = 36
+    /// Đủ chỗ cho cả bướu tròn của `CardShape` (70 − 16 = 54 tính từ mép tấm nền). Hụt một
+    /// chút là quầng sáng dưới nút bị mép cửa sổ cắt ngang thành một đường thẳng. Dải này trong
+    /// suốt hoàn toàn và cửa sổ đã tắt bóng, nên rộng hơn cũng không ai thấy.
+    static let windowBottomInset: CGFloat = 58
 
     /// Bo góc dưới của tấm nền. Hai góc trên để hệ thống tự bo theo khung cửa sổ.
     static let cardCornerRadius: CGFloat = 16
+
+    /// Bán kính vùng chừa cho nút tròn thò ra khỏi tấm nền (nút 42 + chỗ cho quầng sáng).
+    static let actionButtonHalo: CGFloat = 70
 }
 
 enum Motion {
@@ -220,4 +224,36 @@ enum TileGems {
     ]
 
     static func gem(for index: Int) -> [Color] { sets[index % sets.count] }
+}
+
+
+// MARK: - Hình của tấm nền
+
+/// Chữ nhật bo hai góc dưới, **cộng** một vòng tròn ở giữa mép dưới.
+///
+/// Dùng làm khuôn cắt cho cả trang. Vòng tròn chính là chỗ nút "Xong"/"Quét"/"Dọn" thò ra:
+/// không có nó thì khuôn cắt xén mất nửa dưới của nút. Có nó thì mọi thứ KHÁC vẽ ra ngoài tấm
+/// nền đều bị cắt — cụ thể là bóng của sidebar, thứ vốn tràn qua góc bo và loang xuống dải
+/// trong suốt, làm góc dưới bên trái trông như lỗi vẽ.
+struct CardShape: Shape {
+    var cornerRadius: CGFloat = Metrics.cardCornerRadius
+    var buttonRadius: CGFloat = Metrics.actionButtonHalo
+    /// Tâm vòng tròn nằm cao hơn mép dưới chừng này — nút thò ra 26 trên tổng đường kính 84.
+    var buttonCenterLift: CGFloat = 16
+
+    /// Nút căn giữa VÙNG NỘI DUNG, mà vùng đó đã bị sidebar ăn mất 76pt bên trái — nên tâm nút
+    /// nằm lệch phải nửa chừng ấy so với tâm cửa sổ. Đặt bướu tròn ở giữa cửa sổ thì nó xén mất
+    /// một lưỡi liềm ở sườn nút.
+    var centerOffsetX: CGFloat = Metrics.sidebarWidth / 2
+
+    func path(in rect: CGRect) -> Path {
+        var p = UnevenRoundedRectangle(bottomLeadingRadius: cornerRadius,
+                                       bottomTrailingRadius: cornerRadius,
+                                       style: .continuous).path(in: rect)
+        p.addEllipse(in: CGRect(x: rect.midX + centerOffsetX - buttonRadius,
+                                y: rect.maxY - buttonCenterLift - buttonRadius,
+                                width: buttonRadius * 2,
+                                height: buttonRadius * 2))
+        return p
+    }
 }
