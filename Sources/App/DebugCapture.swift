@@ -99,8 +99,13 @@ enum DebugCapture {
         window.orderFrontRegardless()
         RunLoop.current.run(until: Date().addingTimeInterval(0.35))
         let id = CGWindowID(window.windowNumber)
-        guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, id,
-                                                  [.boundsIgnoreFraming, .bestResolution]) else {
+        // `XCLEANER_SHOT_FRAMING=1` giữ lại phần khung hệ thống vẽ quanh cửa sổ (viền, bóng).
+        // Mặc định bỏ đi cho ảnh gọn — nhưng khi đang đi tìm một cái viền thì phải chụp cả nó.
+        var options: CGWindowImageOption = [.bestResolution]
+        if ProcessInfo.processInfo.environment["XCLEANER_SHOT_FRAMING"] != "1" {
+            options.insert(.boundsIgnoreFraming)
+        }
+        guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, id, options) else {
             return false
         }
         let rep = NSBitmapImageRep(cgImage: image)

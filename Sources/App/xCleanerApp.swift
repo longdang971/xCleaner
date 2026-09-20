@@ -80,6 +80,13 @@ private struct WindowConfigurator: NSViewRepresentable {
             // thật sự nhìn xuyên xuống desktop thì nút tròn thò ra mới không như bị cắt.
             w.isOpaque = false
             w.backgroundColor = .clear
+            // Tắt bóng cửa sổ. macOS vẽ bóng theo KHUNG CHỮ NHẬT của cửa sổ chứ không theo hình
+            // dạng thật của nội dung, nên dải trong suốt ở đáy vẫn bị một đường bóng chạy vòng
+            // quanh — nhìn đúng như cửa sổ còn viền ở chỗ lẽ ra trống không. Đã thử ép tính lại
+            // bằng `invalidateShadow()` sau khi nội dung đã dựng xong: bóng vẫn ôm nguyên khung
+            // cũ. Chụp cửa sổ kèm framing (`XCLEANER_SHOT_FRAMING=1`) đối chiếu hai bản bật/tắt
+            // thì thấy rõ, tắt đi là sạch.
+            w.hasShadow = false
             w.standardWindowButton(.zoomButton)?.isEnabled = true
         }
         return v
