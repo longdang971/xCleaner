@@ -148,20 +148,19 @@ enum Metrics {
     /// Nút tròn vẽ vào đúng dải này. Không có nó thì nút bị cắt ngang ở mép cửa sổ — cửa sổ
     /// luôn cắt mọi thứ vẽ ra ngoài khung của nó.
     ///
-    /// Đủ chỗ cho cả bướu tròn của `CardShape` (92 − 16 = 76 tính từ mép tấm nền). Hụt một
+    /// Đủ chỗ cho cả bướu tròn của `CardShape` (112 − 16 = 96 tính từ mép tấm nền). Hụt một
     /// chút là quầng sáng dưới nút bị mép cửa sổ cắt ngang thành một đường thẳng. Dải này trong
     /// suốt hoàn toàn và cửa sổ đã tắt bóng, nên rộng hơn cũng không ai thấy.
-    static let windowBottomInset: CGFloat = 80
+    static let windowBottomInset: CGFloat = 100
 
     /// Bo góc dưới của tấm nền. Hai góc trên để hệ thống tự bo theo khung cửa sổ.
     static let cardCornerRadius: CGFloat = 16
 
     /// Bán kính vùng chừa cho nút tròn thò ra khỏi tấm nền.
     ///
-    /// Phải chứa cả quầng sáng `ButtonAura`, không chỉ chính nút: tầm với xa nhất của một đốm
-    /// là 30 khỏi tâm + 40 nửa đường kính + 22 nhoè = 92. Đổi mấy số trong `ButtonAura` thì
-    /// phải đổi cả con số này.
-    static let actionButtonHalo: CGFloat = 92
+    /// Phải rộng hơn bán kính mà `ButtonAura` tự tắt (100), VÀ tính cả lúc hover: quầng nằm
+    /// trong `background` của nút nên nó phình 1,06 lần cùng nút → 106. Để 112 cho dư.
+    static let actionButtonHalo: CGFloat = 112
 }
 
 /// Đổi trang: trang cũ trượt LÊN rồi tan, trang mới dâng từ dưới lên.

@@ -343,6 +343,19 @@ struct ButtonAura: View {
             ring(of: Array(blobs.suffix(2)), clockwise: false, seconds: 55)
         }
         .frame(width: 230, height: 230)
+        // Tự tắt hẳn ở bán kính 100 — TRƯỚC khi chạm bướu tròn 104 của khuôn cắt.
+        //
+        // Tính "tầm với = khoảng cách + nửa đường kính + bán kính nhoè" rồi lấy đúng số đó làm
+        // bướu cắt là sai: blur toả xa hơn con số bán kính của nó khá nhiều, nên phần đuôi mờ
+        // vẫn còn khi khuôn đã cắt, và cắt ngang một vùng còn nhìn thấy được thì ra đúng một
+        // vòng tròn sắc lẹm. Nay không phụ thuộc vào việc blur toả tới đâu nữa: mặt nạ ép quầng
+        // về 0 ở một bán kính mình chọn, khuôn cắt chỉ việc rộng hơn bán kính ấy.
+        .mask(
+            RadialGradient(stops: [.init(color: .white, location: 0),
+                                   .init(color: .white, location: 0.42),
+                                   .init(color: .clear, location: 1)],
+                           center: .center, startRadius: 0, endRadius: 100)
+        )
         .opacity(lively ? 0.78 : 0.5)
         .animation(Motion.gentle, value: lively)
         .allowsHitTesting(false)
