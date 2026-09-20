@@ -170,28 +170,67 @@ enum Metrics {
 /// trong ~0,2s, nền đổi màu, có một quãng ngắt ~0,13s không trang nào hiện, rồi trang mới dâng
 /// lên trong ~0,2s. Chính quãng ngắt ấy làm cú chuyển đọc ra thành "nhường chỗ" chứ không phải
 /// hai trang chồng lên nhau.
-struct PageShift: ViewModifier {
-    var y: CGFloat
-    var blur: CGFloat
-    var opacity: Double
+struct PageShift: ViewModifier, Animatable {
+    /// 0 = đang ở đúng chỗ, 1 = đã đi hết quãng đẩy.
+    var progress: Double
+    var travel: CGFloat
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
 
     func body(content: Content) -> some View {
-        content
-            .opacity(opacity)
-            .blur(radius: blur)
-            .offset(y: y)
+        let p = min(max(progress, 0), 1)
+        // Đục nguyên trong 45% quãng đầu rồi mới tan. Đây là điểm mấu chốt: bản trước cho độ
+        // đục giảm tuyến tính suốt quãng đẩy, nên lúc trang còn nhìn thấy được thì nó gần như
+        // chưa đi đâu, còn lúc nó đi thì đã mờ gần hết — mắt đọc ra thành "biến mất rồi hiện
+        // ra" chứ không phải một cú đẩy.
+        let fade = min(1, max(0, (p - 0.45) / 0.55))
+        return content
+            .offset(y: travel * CGFloat(p))
+            .opacity(1 - fade)
+            .blur(radius: 5 * p)
+    }
+}
+
+/// Khuôn của VÙNG NỘI DUNG: chữ nhật, cộng một bướu tròn ở giữa mép dưới cho nút tròn thò ra.
+///
+/// Khuôn này đứng yên trong khi trang trượt qua nó, nên trang bị đẩy xuống không tràn xuống dải
+/// trong suốt ở đáy cửa sổ, còn trang bị đẩy lên thì chui xuống dưới thanh tiêu đề. Không có nó
+/// thì trang đang đẩy phải mờ thật nhanh để giấu phần tràn — và mờ nhanh thì mất luôn cú đẩy.
+struct PageClip: Shape {
+    var buttonRadius: CGFloat = Metrics.actionButtonHalo
+    var buttonCenterLift: CGFloat = 16
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path(rect)
+        p.addEllipse(in: CGRect(x: rect.midX - buttonRadius,
+                                y: rect.maxY - buttonCenterLift - buttonRadius,
+                                width: buttonRadius * 2,
+                                height: buttonRadius * 2))
+        return p
     }
 }
 
 extension AnyTransition {
-    static var pageSwap: AnyTransition {
-        .asymmetric(
-            insertion: .modifier(active: PageShift(y: 30, blur: 9, opacity: 0),
-                                 identity: PageShift(y: 0, blur: 0, opacity: 1))
-                .animation(.easeOut(duration: 0.30).delay(0.28)),
-            removal: .modifier(active: PageShift(y: -34, blur: 9, opacity: 0),
-                               identity: PageShift(y: 0, blur: 0, opacity: 1))
-                .animation(.easeIn(duration: 0.18)))
+    /// `direction` = 1 khi đi XUỐNG danh sách mục (trang mới dâng từ dưới lên), = −1 khi đi
+    /// lên (trang mới đổ từ trên xuống). Hướng phải theo đúng chỗ người dùng vừa bấm trên
+    /// sidebar, không thì cú chuyển nào cũng như nhau và mất luôn cảm giác đang đi trong một
+    /// danh sách có trên có dưới.
+    ///
+    /// Hai trang chạy CÙNG LÚC và đi ngược chiều nhau — đó là cái làm nó ra "đẩy". Bản trước
+    /// cho trang mới vào sau trang cũ 0,28s, giữa chừng không trang nào hiện, nên người dùng
+    /// chỉ thấy biến mất rồi hiện ra chứ không thấy đẩy.
+    static func pageSwap(direction: CGFloat) -> AnyTransition {
+        let travel: CGFloat = 130
+        return .asymmetric(
+            insertion: .modifier(active: PageShift(progress: 1, travel: travel * direction),
+                                 identity: PageShift(progress: 0, travel: travel * direction))
+                .animation(.spring(response: 0.44, dampingFraction: 0.9)),
+            removal: .modifier(active: PageShift(progress: 1, travel: -travel * direction),
+                               identity: PageShift(progress: 0, travel: -travel * direction))
+                .animation(.spring(response: 0.44, dampingFraction: 0.9)))
     }
 }
 

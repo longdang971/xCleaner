@@ -9,6 +9,9 @@ struct RootView: View {
     /// để nhìn xuyên xuống, dải trống chỉ thành một vệt đen dưới đáy.
     @State private var bottomInset: CGFloat = Metrics.windowBottomInset
 
+    /// 1 = trang mới dâng từ dưới lên (đi xuống danh sách), −1 = đổ từ trên xuống (đi lên).
+    @State private var pageDirection: CGFloat = 1
+
     private var skin: ModuleSkin { ModuleSkin.skin(for: state.module) }
 
     /// Tông màu của trang đang xem. Khác `skin` ở chỗ trang Cài đặt có tông riêng.
@@ -24,6 +27,10 @@ struct RootView: View {
             // Cách này cho phép màu chuyển mượt (gradient không nội suy trực tiếp được)
             // mà vẫn rẻ vì chỉ là thay đổi opacity trên GPU.
             ZStack {
+                // Lớp đục tuyệt đối dưới cùng. Nền các trang chồng mờ lên nhau lúc đổi màu, và
+                // giữa chừng tổng độ đục tụt xuống dưới 1 — hồi cửa sổ còn đục thì không ai
+                // thấy, từ lúc cửa sổ trong suốt thì nhìn xuyên xuống cả app nằm sau xCleaner.
+                Color(hex: "#101219")
                 ForEach(CleanModule.allCases) { m in
                     ModuleSkin.skin(for: m).background
                         .opacity(state.module == m && !state.showSettings ? 1 : 0)
@@ -40,8 +47,12 @@ struct RootView: View {
                     // `id` để SwiftUI coi mỗi trang là một view KHÁC — không có nó thì nó chỉ
                     // thay nội dung tại chỗ và chẳng có gì để trượt.
                     .id(pageKey)
-                    .transition(.pageSwap)
+                    .transition(.pageSwap(direction: pageDirection))
             }
+            // Khuôn đứng yên, trang trượt qua nó. Phải cắt TRƯỚC khi cộng lề trái, vì khuôn có
+            // bướu tròn ở giữa mép dưới và "giữa" ở đây là giữa VÙNG NỘI DUNG chứ không phải
+            // giữa cửa sổ.
+            .clipShape(PageClip())
             .padding(.leading, Metrics.sidebarWidth)
 
             // Tiêu đề phải căn giữa đúng vùng nội dung, giống mọi thứ khác trong trang.
@@ -55,15 +66,10 @@ struct RootView: View {
             // Sidebar nằm đè lên nội dung để lúc nở ra bố cục không bị đẩy.
             HStack(spacing: 0) {
                 SidebarView(selection: Binding(get: { state.module },
-                                               set: { m in
-                                                   withAnimation(Motion.standard) {
-                                                       state.module = m
-                                                       state.showSettings = false
-                                                   }
-                                               }),
+                                               set: { go(to: $0, settings: false) }),
                             settingsActive: state.showSettings,
                             skin: pageSkin) {
-                    withAnimation(Motion.standard) { state.showSettings = true }
+                    go(to: nil, settings: true)
                 }
                 Spacer(minLength: 0)
             }
@@ -91,20 +97,35 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .xcOpenSettings)) { note in
             if let raw = note.object as? String,
                let t = SettingsView.Tab(rawValue: raw) { settingsTab = t }
-            withAnimation(Motion.standard) { state.showSettings = true }
+            go(to: nil, settings: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: .xcCheckUpdates)) { _ in
             settingsTab = .about
             state.requestUpdateCheck = true
-            withAnimation(Motion.standard) { state.showSettings = true }
+            go(to: nil, settings: true)
         }
         .onReceive(NotificationCenter.default.publisher(for: .xcSelectModule)) { note in
             guard let raw = note.object as? String,
                   let m = CleanModule(rawValue: raw) else { return }
-            withAnimation(Motion.standard) {
-                state.module = m
-                state.showSettings = false
-            }
+            go(to: m, settings: false)
+        }
+    }
+
+    /// Đổi trang, và ghi lại hướng đi để cú đẩy chạy đúng chiều.
+    ///
+    /// Thứ tự lấy theo đúng thứ tự mục trên sidebar; Cài đặt nằm cuối cùng vì nó ở đáy sidebar.
+    private func go(to module: CleanModule?, settings: Bool) {
+        func order(_ module: CleanModule, _ settings: Bool) -> Int {
+            settings ? CleanModule.allCases.count
+                     : (CleanModule.allCases.firstIndex(of: module) ?? 0)
+        }
+        let from = order(state.module, state.showSettings)
+        let to = order(module ?? state.module, settings)
+        guard from != to else { return }
+        pageDirection = to > from ? 1 : -1
+        withAnimation(Motion.standard) {
+            if let module { state.module = module }
+            state.showSettings = settings
         }
     }
 
