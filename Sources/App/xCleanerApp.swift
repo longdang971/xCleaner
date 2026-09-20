@@ -16,7 +16,10 @@ struct xCleanerApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 1140, height: 760)
+        // Cao hơn 760 của bản trước: dải trong suốt 100pt chừa ở đáy cho nút tròn ăn mất
+        // chừng ấy chiều cao nội dung, để nguyên thì khối minh hoạ ở màn khởi đầu bị nén sát
+        // vào nút.
+        .defaultSize(width: 1140, height: 780)
         .commands {
             CommandGroup(replacing: .newItem) { }
             // Cảnh `Settings` của SwiftUI mở cửa sổ hệ thống màu sáng, lạc hẳn với app;
