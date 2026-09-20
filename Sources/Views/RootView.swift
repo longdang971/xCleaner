@@ -12,6 +12,9 @@ struct RootView: View {
     /// 1 = trang mới dâng từ dưới lên (đi xuống danh sách), −1 = đổ từ trên xuống (đi lên).
     @State private var pageDirection: CGFloat = 1
 
+    /// Nút tròn của trang đang xem, do chính trang khai báo qua `bottomAction(_:)`.
+    @State private var action: BottomAction?
+
     private var skin: ModuleSkin { ModuleSkin.skin(for: state.module) }
 
     /// Tông màu của trang đang xem. Khác `skin` ở chỗ trang Cài đặt có tông riêng.
@@ -53,7 +56,26 @@ struct RootView: View {
             // bướu tròn ở giữa mép dưới và "giữa" ở đây là giữa VÙNG NỘI DUNG chứ không phải
             // giữa cửa sổ.
             .clipShape(PageClip())
+            .onPreferenceChange(BottomActionKey.self) { self.action = $0 }
             .padding(.leading, Metrics.sidebarWidth)
+
+            // Nút chính nằm NGOÀI lớp bị đẩy, nên nó đứng yên suốt cú chuyển trang và chỉ đổi
+            // chữ với đổi màu — giống nút Scan của CleanMyMac. Nằm trong lớp bị đẩy thì nó
+            // trượt đi theo trang, và giữa chừng có hai nút cùng hiện.
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                if let action {
+                    CircleActionButton(title: action.title,
+                                       accent: pageSkin.action,
+                                       isEnabled: action.isEnabled,
+                                       progress: action.progress,
+                                       action: action.action)
+                        .padding(.bottom, Metrics.actionButtonBottom)
+                        .transition(.opacity)
+                }
+            }
+            .padding(.leading, Metrics.sidebarWidth)
+            .animation(Motion.gentle, value: action)
 
             // Tiêu đề phải căn giữa đúng vùng nội dung, giống mọi thứ khác trong trang.
             // Căn giữa cả cửa sổ thì nó lệch khỏi tiêu đề trang đúng bằng nửa bề rộng sidebar.

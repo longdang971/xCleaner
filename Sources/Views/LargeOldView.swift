@@ -24,6 +24,7 @@ struct LargeOldView: View {
         .overlay(alignment: .bottom) {
             if !store.files.isEmpty && !store.isScanning { bottomBar }
         }
+        .bottomAction(bottomAction)
         .onReceive(NotificationCenter.default.publisher(for: .xcRescan)) { _ in store.scan() }
         .confirmationDialog("Chuyển \(store.selected.count) tệp vào Thùng rác?",
                             isPresented: $confirming, titleVisibility: .visible) {
@@ -47,10 +48,14 @@ struct LargeOldView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .bottom) {
-            CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
-                .padding(.bottom, Metrics.actionButtonBottom)
-        }
+    }
+
+    /// Màn khởi đầu thì "Quét", có kết quả thì "Xoá"; đang quét hoặc quét xong không thấy gì
+    /// thì không có nút nào.
+    private var bottomAction: BottomAction? {
+        if store.isScanning { return nil }
+        if store.files.isEmpty { return store.hasScanned ? nil : BottomAction(title: "Quét") { store.scan() } }
+        return BottomAction(title: "Xoá", isEnabled: !store.selected.isEmpty) { confirming = true }
     }
 
     /// Quét xong mà không có gì: phải nói ra, chứ ném người dùng về màn khởi đầu thì họ
@@ -125,10 +130,9 @@ struct LargeOldView: View {
                  : "Đã chọn \(store.selected.count) tệp · \(Fmt.size(store.selectedSize))")
                 .font(.system(size: 12.5, weight: .medium))
                 .foregroundStyle(Palette.textSecond)
-            CircleActionButton(title: "Xoá", accent: skin.action,
-                               isEnabled: !store.selected.isEmpty) { confirming = true }
         }
-        .padding(.bottom, Metrics.actionButtonBottom)
+        // Chừa chỗ cho nút tròn mà khung app vẽ đè lên vùng này.
+        .padding(.bottom, Metrics.bottomActionRoom)
     }
 
     private func pickRoot() {

@@ -57,6 +57,7 @@ struct DuplicatesView: View {
         .overlay(alignment: .bottom) {
             if !store.sets.isEmpty && !store.isScanning { bottomBar }
         }
+        .bottomAction(bottomAction)
         .onReceive(NotificationCenter.default.publisher(for: .xcRescan)) { _ in store.scan() }
         .confirmationDialog("Chuyển \(store.selected.count) bản sao vào Thùng rác?",
                             isPresented: $confirming, titleVisibility: .visible) {
@@ -96,10 +97,13 @@ struct DuplicatesView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .bottom) {
-            CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
-                .padding(.bottom, Metrics.actionButtonBottom)
-        }
+    }
+
+    /// Màn khởi đầu thì "Quét", có kết quả thì "Xoá"; đang quét thì màn đó có nút "Dừng" riêng.
+    private var bottomAction: BottomAction? {
+        if store.isScanning { return nil }
+        if store.sets.isEmpty { return store.hasScanned ? nil : BottomAction(title: "Quét") { store.scan() } }
+        return BottomAction(title: "Xoá", isEnabled: !store.selected.isEmpty) { confirming = true }
     }
 
     private var bottomBar: some View {
@@ -107,10 +111,9 @@ struct DuplicatesView: View {
             Text("Đã chọn \(store.selected.count) bản sao · \(Fmt.size(store.selectedSize))")
                 .font(.system(size: 12.5, weight: .medium))
                 .foregroundStyle(Palette.textSecond)
-            CircleActionButton(title: "Xoá", accent: skin.action,
-                               isEnabled: !store.selected.isEmpty) { confirming = true }
         }
-        .padding(.bottom, Metrics.actionButtonBottom)
+        // Chừa chỗ cho nút tròn mà khung app vẽ đè lên vùng này.
+        .padding(.bottom, Metrics.bottomActionRoom)
     }
 
     private func pickRoots() {

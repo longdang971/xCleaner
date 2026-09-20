@@ -24,8 +24,7 @@ struct GroupedModuleView: View {
                              totalBytes: store.liveBytes,
                              found: store.found,
                              progress: store.progress,
-                             skin: skin,
-                             onStop: { store.cancelScan() })
+                             skin: skin)
                     .transition(.opacity)
             case .idle, .scanning:
                 heroScreen
@@ -38,8 +37,7 @@ struct GroupedModuleView: View {
                              doneCount: store.cleaned.count,
                              freed: store.cleanFreed,
                              progress: store.progress,
-                             skin: skin,
-                             onStop: { store.cancelClean() })
+                             skin: skin)
                     .transition(.opacity)
 
             case .done:
@@ -66,6 +64,7 @@ struct GroupedModuleView: View {
 
         }
         .animation(Motion.standard, value: store.phase)
+        .bottomAction(bottomAction)
         // Hộp thoại phải là overlay của cả màn hình: đặt trong ZStack, lớp mờ bị ép theo
         // kích thước của chính hộp thoại và phần còn lại vẫn sáng nguyên.
         .overlay {
@@ -154,11 +153,25 @@ struct GroupedModuleView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .bottom) {
-            if store.phase != .scanning {
-                CircleActionButton(title: "Quét", accent: skin.action) { store.scan() }
-                    .padding(.bottom, Metrics.actionButtonBottom)
-            }
+    }
+
+    /// Nút tròn của mục này, đổi vai theo chặng. Trang chi tiết của một thẻ thì không có nút.
+    private var bottomAction: BottomAction? {
+        if reviewing != nil { return nil }
+        switch store.phase {
+        case .idle:
+            return BottomAction(title: "Quét") { store.scan() }
+        case .scanning:
+            // Chưa có thẻ nào thì vẫn đang ở màn khởi đầu, chỗ đó có nút "Dừng lại" riêng.
+            return store.stages.isEmpty ? nil
+                : BottomAction(title: "Dừng", progress: store.progress) { store.cancelScan() }
+        case .cleaning:
+            return BottomAction(title: "Dừng", progress: store.progress) { store.cancelClean() }
+        case .results:
+            return store.groups.isEmpty ? nil
+                : BottomAction(title: "Dọn", isEnabled: store.totalSelected > 0) { store.clean() }
+        case .done:
+            return BottomAction(title: "Xong") { store.backToStart() }
         }
     }
 
@@ -212,7 +225,6 @@ struct GroupedModuleView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if !store.groups.isEmpty { cleanButton }
         }
         .overlay(alignment: .topLeading) {
             ActionButton(title: "Quay lại", systemImage: "chevron.left") { store.backToStart() }
@@ -273,13 +285,6 @@ struct GroupedModuleView: View {
                   onQuitApp: { store.quitApp(groupID: group.id) })
     }
 
-    private var cleanButton: some View {
-        CircleActionButton(title: "Dọn", accent: skin.action,
-                           isEnabled: store.totalSelected > 0) {
-            store.clean()
-        }
-        .padding(.bottom, Metrics.actionButtonBottom)
-    }
 }
 
 // MARK: - Thẻ tóm tắt một nhóm

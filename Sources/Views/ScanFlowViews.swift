@@ -219,7 +219,6 @@ struct ScanningView: View {
     let found: [CleanedEntry]
     let progress: Double
     let skin: ModuleSkin
-    var onStop: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -232,10 +231,6 @@ struct ScanningView: View {
                          entries: found)
                 .padding(.horizontal, Metrics.contentPadding)
                 .padding(.bottom, 18)
-
-            CircleActionButton(title: "Dừng", accent: skin.action,
-                               progress: progress, action: onStop)
-                .padding(.bottom, Metrics.actionButtonBottom)
         }
     }
 
@@ -277,7 +272,6 @@ struct CleaningView: View {
     let freed: Int64
     let progress: Double
     let skin: ModuleSkin
-    var onStop: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -292,10 +286,6 @@ struct CleaningView: View {
                          runningTitle: "Đang dọn…")
                 .padding(.horizontal, Metrics.contentPadding)
                 .padding(.bottom, 18)
-
-            CircleActionButton(title: "Dừng", accent: skin.action,
-                               progress: progress, action: onStop)
-                .padding(.bottom, Metrics.actionButtonBottom)
         }
     }
 

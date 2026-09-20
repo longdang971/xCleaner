@@ -143,6 +143,10 @@ enum Metrics {
     /// dưới của tấm nền, như nút "Scan" của CleanMyMac. Một chỗ đổi, cả chín nút đi theo.
     static let actionButtonBottom: CGFloat = -26
 
+    /// Chỗ mà trang phải chừa ở đáy cho nút tròn — nút do khung app vẽ đè lên, không nằm trong
+    /// bố cục của trang nữa.
+    static let bottomActionRoom: CGFloat = 64
+
     /// Dải trong suốt chừa ở đáy CỬA SỔ, bên dưới tấm nền.
     ///
     /// Nút tròn vẽ vào đúng dải này. Không có nó thì nút bị cắt ngang ở mép cửa sổ — cửa sổ

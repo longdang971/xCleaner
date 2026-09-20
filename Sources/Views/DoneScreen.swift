@@ -95,10 +95,6 @@ struct DoneScreen: View {
                 }
 
                 Spacer(minLength: 12)
-
-                CircleActionButton(title: "Xong", accent: skin.action) { store.backToStart() }
-                    .padding(.bottom, Metrics.actionButtonBottom)
-                    .modifier(RiseIn(revealed: revealed, delay: 0.95))
             }
             // Phải căng hết khung, nếu không bề ngang co lại bằng dòng chữ dài nhất và khối nội
             // dung không còn nằm giữa cửa sổ.

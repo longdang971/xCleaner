@@ -391,6 +391,44 @@ struct ButtonAura: View {
     }
 }
 
+// MARK: - Nút chính: trang khai báo, khung app vẽ
+
+/// Nút tròn ở đáy do TRANG mô tả nhưng do khung app VẼ.
+///
+/// Trước đây mỗi trang tự dựng nút của mình. Hệ quả chỉ lộ ra khi có hiệu ứng đẩy: nút trượt đi
+/// theo trang, và giữa chừng có hai nút cùng hiện — nút của trang đang ra và nút của trang đang
+/// vào. CleanMyMac thì nút đứng yên tại chỗ suốt cú chuyển, chỉ đổi màu theo mục; muốn vậy nút
+/// phải nằm ngoài trang.
+struct BottomAction: Equatable {
+    var title: String
+    var isEnabled: Bool = true
+    /// Có giá trị thì vẽ vòng tiến độ quanh nút.
+    var progress: Double? = nil
+    var action: () -> Void
+
+    /// So sánh bỏ qua `action`: closure không so sánh được, mà thứ quyết định có phải vẽ lại
+    /// hay không là mặt chữ và trạng thái.
+    static func == (a: BottomAction, b: BottomAction) -> Bool {
+        a.title == b.title && a.isEnabled == b.isEnabled && a.progress == b.progress
+    }
+}
+
+struct BottomActionKey: PreferenceKey {
+    static let defaultValue: BottomAction? = nil
+
+    static func reduce(value: inout BottomAction?, nextValue: () -> BottomAction?) {
+        if let next = nextValue() { value = next }
+    }
+}
+
+extension View {
+    /// Trang gọi hàm này để nói "đáy màn hình cho tôi một nút như thế này". `nil` = trang này
+    /// không có nút.
+    func bottomAction(_ value: BottomAction?) -> some View {
+        preference(key: BottomActionKey.self, value: value)
+    }
+}
+
 /// Lún xuống một chút trong lúc ngón tay còn giữ — phản hồi kiểu nút AppKit.
 struct PressableButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
