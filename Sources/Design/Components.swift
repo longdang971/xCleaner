@@ -356,7 +356,9 @@ struct ButtonAura: View {
                                    .init(color: .clear, location: 1)],
                            center: .center, startRadius: 0, endRadius: 100)
         )
-        .opacity(lively ? 0.78 : 0.5)
+        // Cộng sáng nên chỉ cần một chút là đã rực: 0,5 lúc đứng yên làm cả vùng quanh nút
+        // sáng trắng lên, nhìn như nút bị chói. 0,28 vừa đủ thấy có ánh sáng quanh nút.
+        .opacity(lively ? 0.42 : 0.28)
         .animation(Motion.gentle, value: lively)
         .allowsHitTesting(false)
         .onAppear { spin = true }
