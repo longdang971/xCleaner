@@ -227,13 +227,23 @@ struct CircleActionButton: View {
             ZStack {
                 // Màu đặc, không pha trong suốt — nền phía sau sẽ làm nút xỉn đi.
                 Circle().fill(accent)
+
+                // Tối dần vào giữa, sáng nhất ở vành — học từ nút Scan của CleanMyMac, và lấy
+                // đúng tỉ lệ đo được trên nút của họ: tâm #68148f, vành #b525d0, tức vành sáng
+                // gấp khoảng 1,8 lần tâm mà vẫn nguyên một tông màu. Đen 0,34 ở tâm cộng trắng
+                // 0,28 ở vành cho ra đúng tỉ lệ ấy trên màu xanh của ta.
                 Circle()
-                    .fill(LinearGradient(colors: [.white.opacity(0.30), .clear],
+                    .fill(RadialGradient(colors: [.black.opacity(0.34), .clear],
+                                         center: .center, startRadius: 0, endRadius: 44))
+                Circle()
+                    .fill(RadialGradient(stops: [.init(color: .clear, location: 0.52),
+                                                 .init(color: .white.opacity(0.28), location: 1)],
+                                         center: .center, startRadius: 0, endRadius: 42))
+                // Nút của họ vành trên còn sáng hơn vành dưới (#d02ce2 so với #931fba) — một
+                // chút ánh sáng rọi từ trên xuống, giữ cho khối tròn không bị phẳng như hình vẽ.
+                Circle()
+                    .fill(LinearGradient(colors: [.white.opacity(0.12), .clear],
                                          startPoint: .top, endPoint: .center))
-                Circle()
-                    .fill(RadialGradient(colors: [.black.opacity(0.22), .clear],
-                                         center: UnitPoint(x: 0.5, y: 1.1),
-                                         startRadius: 0, endRadius: 60))
                 // Khi có vòng tiến trình thì chính nó làm viền; hai vòng trắng lồng nhau
                 // nhìn như một lỗi vẽ.
                 if progress == nil {
