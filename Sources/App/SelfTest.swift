@@ -38,6 +38,7 @@ enum SelfTest {
         testRootBatchEvidence()
         testRegressionGuards()
         testUpdater()
+        testCountingValue()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
     }
@@ -1119,6 +1120,49 @@ enum SelfTest {
               !FileUtils.exists(dir.appendingPathComponent("swap.sh")))
 
         try? fm.removeItem(at: dir)
+    }
+
+    /// Hiệu ứng đếm số ở màn dọn xong chỉ được chạy PHẦN SỐ, đơn vị phải đứng yên —
+    /// nội suy thẳng byte rồi định dạng lại mỗi khung hình thì người dùng thấy
+    /// "0 KB → 900 MB → 12,4 GB", đơn vị nhảy loạn giữa chừng.
+    private static func testCountingValue() {
+        print("[Fmt] đếm số ở màn dọn xong")
+
+        // Bám theo locale của máy thay vì viết cứng "12,4": chính `sizeParts` sinh ra chuỗi này.
+        let final = Fmt.sizeParts(12_400_000_000).value
+        let parser = NumberFormatter()
+        parser.numberStyle = .decimal
+        let sep = parser.decimalSeparator ?? "."
+        func number(_ s: String) -> Double? { parser.number(from: s)?.doubleValue }
+        func decimals(_ s: String) -> Int {
+            guard let r = s.range(of: sep) else { return 0 }
+            return s[r.upperBound...].count
+        }
+
+        check("chạy hết đường thì trả đúng chuỗi cuối",
+              Fmt.countingValue(finalValue: final, fraction: 1) == final,
+              "(\(Fmt.countingValue(finalValue: final, fraction: 1)) ≠ \(final))")
+
+        let half = Fmt.countingValue(finalValue: final, fraction: 0.5)
+        check("nửa đường ra nửa giá trị",
+              abs((number(half) ?? -1) - (number(final) ?? 0) / 2) < 0.06,
+              "(\(half) so với \(final))")
+        check("nửa đường giữ nguyên số chữ số thập phân",
+              decimals(half) == decimals(final),
+              "(\(half) so với \(final))")
+
+        let start = Fmt.countingValue(finalValue: final, fraction: 0)
+        check("đầu đường là số không", number(start) == 0, "(\(start))")
+        check("số không vẫn giữ số chữ số thập phân", decimals(start) == decimals(final),
+              "(\(start) so với \(final))")
+
+        // Giá trị tròn ("512 MB") không được mọc thêm phần thập phân giữa chừng.
+        let whole = Fmt.countingValue(finalValue: "512", fraction: 0.5)
+        check("số nguyên vẫn là số nguyên", whole == "256", "(\(whole))")
+
+        // Không phân tích được thì thà mất hiệu ứng còn hơn hiện sai số.
+        check("chuỗi không phải số thì trả lại nguyên vẹn",
+              Fmt.countingValue(finalValue: "—", fraction: 0.5) == "—")
     }
 }
 #endif

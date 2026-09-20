@@ -537,7 +537,10 @@ final class ScanStore: ObservableObject {
 
     /// Dựng thẳng màn "đã dọn xong" bằng dữ liệu giả — không quét, không xoá gì cả.
     /// Cần khi xem lại bố cục màn này: đi đường thật phải chờ hết một lần quét.
-    func debugDemoDone() {
+    /// `variant`: `"cancel"` dựng cảnh huỷ giữa chừng chưa xoá được gì, `"empty"` dựng cảnh dọn
+    /// xong mà không đòi lại được byte nào. Hai nhánh này của màn dọn xong không có đường nào
+    /// khác để xem bằng mắt — muốn gặp thật thì phải bấm huỷ đúng lúc đang hỏi mật khẩu.
+    func debugDemoDone(variant: String = "1") {
         let demo: [(String, String, Int64)] = [
             ("Bộ nhớ đệm hệ thống", "internaldrive", 6_900_000_000),
             ("Thùng rác", "trash", 3_100_000_000),
@@ -550,9 +553,18 @@ final class ScanStore: ObservableObject {
         }
         stageBytes = Dictionary(uniqueKeysWithValues: demo.enumerated().map { ($0.offset, $0.element.2) })
         currentStage = nil
-        outcome = CleanOutcome(removedCount: 264, trashedCount: 0,
-                               freedBytes: demo.reduce(0) { $0 + $1.2 },
-                               failures: [], wasCancelled: false, usedAdmin: true)
+        switch variant {
+        case "cancel":
+            outcome = CleanOutcome(removedCount: 0, trashedCount: 0, freedBytes: 0,
+                                   failures: [], wasCancelled: true, usedAdmin: false)
+        case "empty":
+            outcome = CleanOutcome(removedCount: 0, trashedCount: 0, freedBytes: 0,
+                                   failures: [], wasCancelled: false, usedAdmin: false)
+        default:
+            outcome = CleanOutcome(removedCount: 264, trashedCount: 0,
+                                   freedBytes: demo.reduce(0) { $0 + $1.2 },
+                                   failures: [], wasCancelled: false, usedAdmin: true)
+        }
         statusText = "Đã dọn xong"
         smoother.complete()
         phase = .done

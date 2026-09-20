@@ -313,6 +313,34 @@ enum Fmt {
         return (String(parts[0]), String(parts[1]))
     }
 
+    /// Phần số của một cỡ dung lượng khi hiệu ứng đếm ở màn dọn xong mới chạy được
+    /// `fraction` đường (0 → 1).
+    ///
+    /// Nội suy thẳng số byte rồi gọi `sizeParts` lại mỗi khung hình sẽ làm ĐƠN VỊ nhảy
+    /// KB → MB → GB giữa chừng, nhìn như số liệu bị lỗi. Ở đây đơn vị và số chữ số thập phân
+    /// được lấy từ giá trị CUỐI, chỉ phần số chạy.
+    ///
+    /// `fraction >= 1` trả lại đúng chuỗi đã nhận, nên khung hình cuối của hiệu ứng khớp tuyệt
+    /// đối với con số thật — không có cú giật ở nhịp cuối. Chuỗi không phân tích được (locale lạ,
+    /// hoặc đã là chữ) cũng trả lại nguyên vẹn: thà mất hiệu ứng đếm còn hơn hiện sai con số.
+    static func countingValue(finalValue: String, fraction: Double) -> String {
+        guard fraction < 1 else { return finalValue }
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        guard let target = f.number(from: finalValue)?.doubleValue else { return finalValue }
+
+        // Số chữ số thập phân của chính chuỗi cuối: "12,4" → 1, "512" → 0. Giữ nguyên con số này
+        // để chiều ngang của dòng không co giãn trong lúc đếm.
+        let separator = f.decimalSeparator ?? "."
+        let decimals = finalValue.range(of: separator)
+            .map { finalValue[$0.upperBound...].count } ?? 0
+        f.minimumFractionDigits = decimals
+        f.maximumFractionDigits = decimals
+
+        let value = max(0, target * fraction)
+        return f.string(from: NSNumber(value: value)) ?? finalValue
+    }
+
     static func date(_ d: Date?) -> String {
         guard let d else { return "" }
         let f = DateFormatter()

@@ -103,7 +103,7 @@ struct GroupedModuleView: View {
         .onAppear {
             #if DEBUG
             if let want = ProcessInfo.processInfo.environment["XCLEANER_DEMO_DONE"], want != "0" {
-                store.debugDemoDone()
+                store.debugDemoDone(variant: want)
             }
             #endif
         }
@@ -659,121 +659,6 @@ struct ItemRow: View {
         .onHover { h in hovering = h }
     }
 }
-
-// MARK: - Màn hình dọn xong
-
-/// Cùng bố cục với màn đang quét và màn đang dọn — con số lớn ở trên, lưới thẻ ở giữa,
-/// một nút tròn ở đáy — để ba màn nối tiếp nhau trông như cùng một màn hình đổi nội dung
-/// chứ không phải ba trang rời rạc.
-///
-/// Lưới ở đây là chính những ô vừa chạy lúc dọn, nay đứng yên với số đã dọn của từng nhóm:
-/// người dùng thấy ngay phần nào đóng góp bao nhiêu vào con số tổng.
-struct DoneScreen: View {
-    @ObservedObject var store: ScanStore
-    let skin: ModuleSkin
-
-    var body: some View {
-        ZStack {
-            if let o = store.outcome {
-                content(o)
-            } else {
-                // Chỉ gặp khi phase nhảy sang .done trước lúc kết quả kịp về.
-                ScanRing(mode: store.ringMode, bytes: store.totalSelected,
-                         caption: store.statusText, diameter: 180, accent: skin.glow)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-    }
-
-    /// Huỷ giữa chừng mà chưa xoá được gì thì không có con số nào để khoe.
-    private func cancelledEmpty(_ o: CleanOutcome) -> Bool {
-        o.wasCancelled && o.freedBytes == 0
-    }
-
-    private func content(_ o: CleanOutcome) -> some View {
-        VStack(spacing: 0) {
-            header(o)
-                .padding(.top, 6)
-                .padding(.bottom, 22)
-
-            if store.stages.isEmpty {
-                EmptyStateView(icon: "checkmark.seal",
-                               title: "Đã dọn xong",
-                               message: "Không còn gì trong danh sách vừa rồi.",
-                               gem: skin.gem)
-            } else {
-                ProgressGrid(stages: store.stages,
-                             activeIndex: nil,
-                             stageBytes: store.stageBytes,
-                             detail: "",
-                             doneCaption: "đã dọn")
-                    .padding(.horizontal, Metrics.contentPadding)
-                    .padding(.bottom, 18)
-            }
-
-            CircleActionButton(title: "Xong", accent: skin.action) { store.backToStart() }
-                .padding(.bottom, 22)
-        }
-        .overlay(alignment: .topTrailing) {
-            IconToolbar(actions: [
-                .init(icon: "arrow.clockwise", help: "Quét lại") { store.scan() }
-            ])
-            .padding(.trailing, Metrics.contentPadding)
-            .padding(.top, 6)
-        }
-    }
-
-    // MARK: Đầu trang
-
-    /// Đúng một con số lớn như màn đang dọn, chỉ khác thì quá khứ: "đã giải phóng".
-    private func header(_ o: CleanOutcome) -> some View {
-        VStack(spacing: 8) {
-            if cancelledEmpty(o) {
-                Text("Đã huỷ")
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(.white)
-            } else {
-                let parts = Fmt.sizeParts(o.freedBytes)
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text(parts.value)
-                        .font(.system(size: 42, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .contentTransition(.numericText())
-                    Text(parts.unit)
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.82))
-                    Text("đã giải phóng")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.82))
-                        .padding(.leading, 2)
-                }
-            }
-
-            Text(summary(o))
-                .font(.system(size: 12.5))
-                .foregroundStyle(Palette.textSecond)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 640)
-        }
-    }
-
-    private func summary(_ o: CleanOutcome) -> String {
-        var parts: [String] = ["\(o.removedCount) mục đã được dọn"]
-        // Nói rõ thứ nào còn lấy lại được: người dùng bật "chuyển vào Thùng rác" là để yên tâm.
-        if o.trashedCount > 0 {
-            parts.append(o.trashedCount == o.removedCount
-                         ? "tất cả đang nằm trong Thùng rác"
-                         : "\(o.trashedCount) mục nằm trong Thùng rác")
-        }
-        if o.wasCancelled {
-            parts.append("bạn đã huỷ nhập mật khẩu nên phần trong thư mục hệ thống được giữ nguyên")
-        } else if o.usedAdmin {
-            parts.append("có dùng quyền quản trị")
-        }
-        return parts.joined(separator: " · ")
-    }
-}
-
 
 /// Mở thẳng mục Toàn quyền truy cập đĩa trong Cài đặt Hệ thống.
 func openFullDiskAccess() {
