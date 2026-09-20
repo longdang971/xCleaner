@@ -268,16 +268,14 @@ struct CircleActionButton: View {
                     .frame(width: 86, height: 86)
                 }
             }
-            // Quầng tối đặt ở nền chứ không nằm trong ZStack: một con có kích thước cứng
-            // sẽ kéo cả ZStack giãn ra theo nó, và nút phình to gấp đôi.
-            .background(
-                Circle()
-                    .fill(RadialGradient(colors: [.black.opacity(0.42), .clear],
-                                         center: .center, startRadius: 36, endRadius: 66))
-                    .frame(width: 140, height: 140)
-            )
+            // Không còn quầng tối quanh nút. Nút nay thò xuống dải trong suốt ở đáy cửa sổ, và
+            // một gradient đen mờ dần vẽ lên nền trong suốt lộ nguyên vân tròn từng nấc alpha —
+            // trên nền đặc thì cùng gradient ấy chìm đi không ai thấy. Bóng đổ theo màu nút
+            // (`shadow` bên dưới) là thứ duy nhất còn lại, và bóng thì hệ thống vẽ mượt.
             .shadow(color: accent.opacity(hovering ? 0.85 : 0.55),
-                    radius: hovering ? 26 : 16, y: 6)
+                    // Bóng ngắn lại và không lệch xuống nữa: phần dưới nút nay nằm ngoài tấm
+                    // nền, bóng dài chỉ tổ bị mép cửa sổ cắt ngang thành một đường.
+                    radius: hovering ? 20 : 13, y: 2)
             .brightness(hovering ? 0.06 : 0)
             .opacity(isEnabled ? 1 : 0.4)
         }

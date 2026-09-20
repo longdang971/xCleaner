@@ -139,11 +139,21 @@ enum Metrics {
     static let contentPadding: CGFloat = 26
     static let titleBarHeight: CGFloat = 46
 
-    /// Khoảng cách từ đáy cửa sổ tới nút tròn chính — cố ý ÂM: nút thò một phần ra ngoài mép
-    /// dưới và bị chính cửa sổ cắt, như nút "Scan" của CleanMyMac. Nút đứng hẳn trong khung
-    /// trông như một nút bình thường bị đặt lệch xuống; cắt bớt thì nó thành một phần của
-    /// khung cửa sổ. Một chỗ đổi, cả chín nút trong app đi theo.
+    /// Khoảng cách từ đáy **tấm nền** tới nút tròn chính — cố ý ÂM: nút thò hẳn ra ngoài mép
+    /// dưới của tấm nền, như nút "Scan" của CleanMyMac. Một chỗ đổi, cả chín nút đi theo.
     static let actionButtonBottom: CGFloat = -26
+
+    /// Dải trong suốt chừa ở đáy CỬA SỔ, bên dưới tấm nền.
+    ///
+    /// Nút tròn vẽ vào đúng dải này. Không có nó thì nút bị cắt ngang ở mép cửa sổ — cửa sổ
+    /// luôn cắt mọi thứ vẽ ra ngoài khung của nó.
+    ///
+    /// Đúng bằng phần nút thò ra (26) cộng một chút cho bóng (10). Rộng hơn nữa thì bên dưới
+    /// nút còn một khoảng trống nhìn xuyên xuống desktop — trông như cửa sổ bị hụt một dải.
+    static let windowBottomInset: CGFloat = 36
+
+    /// Bo góc dưới của tấm nền. Hai góc trên để hệ thống tự bo theo khung cửa sổ.
+    static let cardCornerRadius: CGFloat = 16
 }
 
 enum Motion {

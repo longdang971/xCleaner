@@ -1,8 +1,13 @@
 import SwiftUI
+import AppKit
 
 struct RootView: View {
     @EnvironmentObject private var state: AppState
     @State private var settingsTab: SettingsView.Tab = .general
+
+    /// Dải trong suốt ở đáy cửa sổ. Về 0 khi toàn màn hình: ở đó không có desktop nào phía sau
+    /// để nhìn xuyên xuống, dải trống chỉ thành một vệt đen dưới đáy.
+    @State private var bottomInset: CGFloat = Metrics.windowBottomInset
 
     private var skin: ModuleSkin { ModuleSkin.skin(for: state.module) }
 
@@ -24,6 +29,10 @@ struct RootView: View {
                     .opacity(state.showSettings ? 1 : 0)
             }
             .ignoresSafeArea()
+            // Chỉ bo hai góc DƯỚI: hai góc trên đã nằm đúng mép cửa sổ và được hệ thống bo sẵn,
+            // bo thêm lần nữa là hở ra hai lỗ trong suốt ở vai cửa sổ.
+            .clipShape(.rect(bottomLeadingRadius: Metrics.cardCornerRadius,
+                             bottomTrailingRadius: Metrics.cardCornerRadius))
             .animation(Motion.skin, value: pageKey)
 
             VStack(spacing: 0) {
@@ -55,6 +64,15 @@ struct RootView: View {
         }
         .ignoresSafeArea(.container, edges: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Cả trang co lên, chừa dải trong suốt ở đáy cho nút tròn thò xuống. `padding` KHÔNG
+        // cắt nội dung, nên nút vẽ tràn vào dải này vẫn hiện trọn vẹn.
+        .padding(.bottom, bottomInset)
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
+            bottomInset = 0
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
+            bottomInset = Metrics.windowBottomInset
+        }
         .environment(\.colorScheme, .dark)
         .onReceive(NotificationCenter.default.publisher(for: .xcOpenSettings)) { note in
             if let raw = note.object as? String,

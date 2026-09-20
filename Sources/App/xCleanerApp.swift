@@ -76,7 +76,10 @@ private struct WindowConfigurator: NSViewRepresentable {
             w.titleVisibility = .hidden
             w.isMovableByWindowBackground = true
             w.animationBehavior = .none
-            w.backgroundColor = NSColor(hex: "#101219")
+            // Trong suốt: tấm nền bên trong tự vẽ hình dạng của mình, và dải chừa ở đáy phải
+            // thật sự nhìn xuyên xuống desktop thì nút tròn thò ra mới không như bị cắt.
+            w.isOpaque = false
+            w.backgroundColor = .clear
             w.standardWindowButton(.zoomButton)?.isEnabled = true
         }
         return v
