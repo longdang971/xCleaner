@@ -32,6 +32,103 @@ struct Squircle: InsettableShape {
     }
 }
 
+// MARK: - Hình của viên biểu tượng trong màn giới thiệu
+
+/// Viên "cờ đuôi nheo": vuông bo góc trên, mép dưới khoét một chữ V.
+///
+/// Học từ CleanMyMac — ở đó mỗi mục có một **dáng viên khác nhau** chứ không phải cùng một hình
+/// đổi màu: Maintenance/Login/Background Items dùng dáng cờ này, mục về tệp dùng dáng cánh hoa.
+/// Dáng riêng làm mỗi mục nhớ được bằng bóng chứ không phải bằng màu — màu thì đổi theo nền của
+/// chính mục ấy nên không dùng để phân biệt được.
+struct PennantBadge: Shape {
+    func path(in rect: CGRect) -> Path {
+        let topR = rect.width * 0.30
+        let tipR = rect.width * 0.14
+        /// Chiều sâu của chữ V, tính từ mép dưới lên.
+        let notch = rect.height * 0.24
+
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY + topR))
+        p.addQuadCurve(to: CGPoint(x: rect.minX + topR, y: rect.minY),
+                       control: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX - topR, y: rect.minY))
+        p.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY + topR),
+                       control: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - tipR))
+        p.addQuadCurve(to: CGPoint(x: rect.maxX - tipR * 0.8, y: rect.maxY),
+                       control: CGPoint(x: rect.maxX, y: rect.maxY))
+        // Đỉnh chữ V bo tròn: nhọn hoắt thì ở cỡ 30pt nó thành một cái răng cưa.
+        p.addLine(to: CGPoint(x: rect.midX + tipR * 0.7, y: rect.maxY - notch + tipR * 0.5))
+        p.addQuadCurve(to: CGPoint(x: rect.midX - tipR * 0.7, y: rect.maxY - notch + tipR * 0.5),
+                       control: CGPoint(x: rect.midX, y: rect.maxY - notch))
+        p.addLine(to: CGPoint(x: rect.minX + tipR * 0.8, y: rect.maxY))
+        p.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY - tipR),
+                       control: CGPoint(x: rect.minX, y: rect.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// Viên "cánh hoa": bốn góc phình ra, bốn cạnh hóp vào — dáng viên của nhóm mục về tệp trong
+/// CleanMyMac.
+///
+/// Dựng bằng toạ độ cực `r(θ) = R·(1 − k·cos4θ)`: `cos4θ` đạt −1 ở 45°, 135°, 225°, 315° nên
+/// bán kính lớn nhất rơi đúng vào bốn góc, nhỏ nhất ở giữa bốn cạnh. `k` là độ phình.
+struct PetalBadge: Shape {
+    /// 0 là hình tròn. 0,16 là chỗ mắt bắt đầu đọc ra "bốn cánh" mà chưa thành hình bông hoa.
+    var bulge: CGFloat = 0.16
+
+    func path(in rect: CGRect) -> Path {
+        let cx = rect.midX, cy = rect.midY
+        // Chia cho (1 + bulge) để bốn góc phình ra vẫn nằm gọn trong khung, không bị xén.
+        let rx = rect.width / 2 / (1 + bulge), ry = rect.height / 2 / (1 + bulge)
+        let steps = 240
+        var p = Path()
+        for i in 0...steps {
+            let t = CGFloat(i) / CGFloat(steps) * 2 * .pi
+            let k = 1 - bulge * cos(4 * t)
+            let pt = CGPoint(x: cx + rx * k * cos(t), y: cy + ry * k * sin(t))
+            if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+        }
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// Dáng viên biểu tượng của một mục trong màn giới thiệu. Mỗi mục một dáng, như CleanMyMac.
+enum IntroBadge {
+    /// Dáng mặc định — Quét thông minh giữ nguyên dáng này.
+    case squircle
+    case pennant
+    case petal
+
+    var shape: AnyShape {
+        switch self {
+        case .squircle: return AnyShape(Squircle())
+        case .pennant:  return AnyShape(PennantBadge())
+        case .petal:    return AnyShape(PetalBadge())
+        }
+    }
+
+    /// Cờ đuôi nheo cao hơn rộng; cánh hoa phải to hơn một chút mới "nặng" ngang hai dáng kia,
+    /// vì bốn cạnh hóp vào đã ăn mất diện tích.
+    var size: CGSize {
+        switch self {
+        case .squircle: return CGSize(width: 30, height: 30)
+        case .pennant:  return CGSize(width: 28, height: 34)
+        case .petal:    return CGSize(width: 33, height: 33)
+        }
+    }
+
+    /// Ký hiệu phải nhích lên trong viên cờ: nửa dưới đã bị chữ V khoét mất.
+    var glyphOffsetY: CGFloat {
+        switch self {
+        case .pennant: return -3
+        default:       return 0
+        }
+    }
+}
+
 // MARK: - Khối 3D
 
 /// Khối bóng loáng làm điểm nhấn thị giác cho mỗi mục — vai trò giống các vật thể 3D
@@ -223,7 +320,8 @@ struct CircleActionButton: View {
     @State private var hovering = false
 
     var body: some View {
-        Button(action: action) {
+        // Chặn cú bấm ngay ở đây thay vì bằng `.disabled`, xem ghi chú ở `allowsHitTesting`.
+        Button(action: { if isEnabled { action() } }) {
             ZStack {
                 // Màu đặc, không pha trong suốt — nền phía sau sẽ làm nút xỉn đi.
                 Circle().fill(accent)
@@ -254,7 +352,8 @@ struct CircleActionButton: View {
                     // sẵn về mặt thị giác, thêm nét đậm nữa thì "Quét"/"Dọn"/"Xong" bè ra.
                     // Bóng cũng nhẹ đi theo — bóng đậm quanh chữ mảnh trông như nét viền.
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
+                    // Chữ mờ đi được vì sau lưng nó là mặt nút đặc, không phải desktop.
+                    .foregroundStyle(.white.opacity(isEnabled ? 1 : 0.6))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .padding(.horizontal, 8)
@@ -282,17 +381,27 @@ struct CircleActionButton: View {
             // một gradient đen mờ dần vẽ lên nền trong suốt lộ nguyên vân tròn từng nấc alpha —
             // trên nền đặc thì cùng gradient ấy chìm đi không ai thấy. Bóng đổ theo màu nút
             // (`shadow` bên dưới) là thứ duy nhất còn lại, và bóng thì hệ thống vẽ mượt.
-            .background { ButtonAura(accent: accent, lively: hovering) }
-            .brightness(hovering ? 0.06 : 0)
+            .background { ButtonAura(accent: accent, lively: hovering && isEnabled) }
+            .brightness(hovering && isEnabled ? 0.06 : 0)
             // Phình nhẹ khi rê chuột vào. 1,06 trên nút 84pt là +5pt — đủ để tay thấy nút
             // "sống", chưa đủ để nó chạm mép bướu tròn 70 của `CardShape` (nút + bóng lúc hover
             // là (42+20+2)×1,06 ≈ 68). Phình hơn nữa là quầng sáng bị khuôn cắt xén mất một
             // vành cung.
             .scaleEffect(hovering && isEnabled ? 1.06 : 1)
-            .opacity(isEnabled ? 1 : 0.4)
+            // Tắt nút bằng cách RÚT MÀU, không bằng `opacity`. Nửa dưới nút nằm ngoài tấm nền
+            // nên mờ đi là nhìn xuyên thấy desktop và app phía sau ngay giữa mặt nút — người
+            // dùng đọc ra thành lỗi vẽ chứ không đọc ra "nút đang tắt". Rút màu thì nút vẫn là
+            // một khối đặc, chỉ xỉn đi.
+            .saturation(isEnabled ? 1 : 0.16)
+            .brightness(isEnabled ? 0 : -0.1)
         }
         .buttonStyle(.plain)
-        .disabled(!isEnabled)
+        // KHÔNG dùng `.disabled`. macOS tự làm mờ nhãn của nút đang tắt — đo được nút chỉ còn
+        // **62% độ đục** (lấy màu nút trên hai nền khác nhau rồi giải ngược ra alpha). Nửa dưới
+        // nút nằm ngoài tấm nền nên 38% còn lại là nhìn thẳng xuống desktop: thấy rõ mép cửa sổ
+        // Terminal chạy ngang qua giữa mặt nút. Chặn bấm bằng hit-testing rồi tự vẽ trạng thái
+        // tắt (rút màu) thì nút vẫn đặc hoàn toàn.
+        .allowsHitTesting(isEnabled)
         .onHover { h in withAnimation(Motion.gentle) { hovering = h } }
     }
 }
@@ -1141,16 +1250,20 @@ struct ModuleIntro<Extra: View>: View {
     let icon: String
     let gem: [Color]
     let highlights: [(icon: String, title: String)]
+    /// Dáng viên biểu tượng của ba dòng bên phải. Mỗi mục một dáng.
+    let badge: IntroBadge
     @ViewBuilder var extra: Extra
 
     init(title: String, subtitle: String, icon: String, gem: [Color],
          highlights: [(icon: String, title: String)],
+         badge: IntroBadge = .squircle,
          @ViewBuilder extra: () -> Extra = { EmptyView() }) {
         self.title = title
         self.subtitle = subtitle
         self.icon = icon
         self.gem = gem
         self.highlights = highlights
+        self.badge = badge
         self.extra = extra()
     }
 
@@ -1175,18 +1288,22 @@ struct ModuleIntro<Extra: View>: View {
                     ForEach(Array(highlights.enumerated()), id: \.offset) { _, h in
                         HStack(spacing: 13) {
                             ZStack {
-                                Squircle()
+                                badge.shape
                                     .fill(LinearGradient(colors: [gem[0], gem[1]],
                                                          startPoint: .topLeading,
                                                          endPoint: .bottomTrailing))
-                                Squircle()
+                                badge.shape
                                     .fill(LinearGradient(colors: [.white.opacity(0.4), .clear],
                                                          startPoint: .top, endPoint: .center))
                                 Image(systemName: h.icon)
                                     .font(.system(size: 12.5, weight: .semibold))
                                     .foregroundStyle(.white)
+                                    .offset(y: badge.glyphOffsetY)
                             }
-                            .frame(width: 30, height: 30)
+                            .frame(width: badge.size.width, height: badge.size.height)
+                            // Khung cố định theo dáng CAO NHẤT, nếu không mỗi mục một dáng là
+                            // mỗi mục một khoảng cách dòng khác nhau.
+                            .frame(width: 34, height: 34)
                             .shadow(color: gem[1].opacity(0.45), radius: 6, y: 2)
 
                             Text(h.title)

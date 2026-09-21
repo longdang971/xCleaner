@@ -52,9 +52,8 @@ struct RootView: View {
                     .id(pageKey)
                     .transition(.pageSwap(direction: pageDirection))
             }
-            // Khuôn đứng yên, trang trượt qua nó. Phải cắt TRƯỚC khi cộng lề trái, vì khuôn có
-            // bướu tròn ở giữa mép dưới và "giữa" ở đây là giữa VÙNG NỘI DUNG chứ không phải
-            // giữa cửa sổ.
+            // Khuôn đứng yên, trang trượt qua nó — nó là thứ duy nhất chặn trang đang bị đẩy
+            // vẽ tràn ra ngoài chỗ của mình, cả xuống dải trong suốt ở đáy lẫn lên thanh tiêu đề.
             .clipShape(PageClip())
             .onPreferenceChange(BottomActionKey.self) { self.action = $0 }
             .padding(.leading, Metrics.sidebarWidth)
@@ -90,6 +89,7 @@ struct RootView: View {
                 SidebarView(selection: Binding(get: { state.module },
                                                set: { go(to: $0, settings: false) }),
                             settingsActive: state.showSettings,
+                            settingsNeedsAttention: !state.hasFullDiskAccess,
                             skin: pageSkin) {
                     go(to: nil, settings: true)
                 }
@@ -116,6 +116,9 @@ struct RootView: View {
             bottomInset = Metrics.windowBottomInset
         }
         .environment(\.colorScheme, .dark)
+        // Cổng chuột cho dải trong suốt ở đáy: nó cần biết trang đang xem có nút tròn hay không,
+        // mà chỉ chỗ này mới biết.
+        .background(BottomStripGate(hasButton: action != nil))
         .onReceive(NotificationCenter.default.publisher(for: .xcOpenSettings)) { note in
             if let raw = note.object as? String,
                let t = SettingsView.Tab(rawValue: raw) { settingsTab = t }
@@ -193,7 +196,10 @@ struct TitleBar: View {
     var body: some View {
         ZStack {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                // 15 chứ không phải 13 như thanh tiêu đề chuẩn của macOS: cửa sổ này tự vẽ
+                // thanh tiêu đề trên nền gradient đậm, cỡ chuẩn đọc ra bé hơn hẳn mọi chữ khác
+                // trong app.
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Palette.textSecond)
             HStack {
                 leading

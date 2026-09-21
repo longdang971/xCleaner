@@ -42,7 +42,8 @@ struct LargeOldView: View {
                         subtitle: "Tìm các tệp từ \(settings.largeMinMB) MB trở lên trong thư mục nhà. Library và node_modules được bỏ qua cho nhanh.",
                         icon: CleanModule.largeOld.icon,
                         gem: skin.gem,
-                        highlights: CleanModule.largeOld.highlights) {
+                        highlights: CleanModule.largeOld.highlights,
+                        badge: .pennant) {
                 ActionButton(title: "Chọn thư mục khác…", systemImage: "folder") { pickRoot() }
             }
             Spacer()
@@ -85,26 +86,27 @@ struct LargeOldView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ZStack(alignment: .bottom) {
-                ScrollView {
-                    LazyVStack(spacing: 2) {
-                        ForEach(store.visibleFiles) { f in
-                            FileRow(found: f, isSelected: store.selected.contains(f.url)) {
-                                store.toggle(f.url)
-                            }
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(store.visibleFiles) { f in
+                        FileRow(found: f, isSelected: store.selected.contains(f.url)) {
+                            store.toggle(f.url)
                         }
                     }
-                    .padding(8)
-                    .padding(.bottom, 120)
                 }
-                .scrollIndicators(.never)
-                .glass()
-                .padding(.horizontal, Metrics.contentPadding)
-                .padding(.bottom, Metrics.contentPadding)
-
-                BottomFade(height: 120).padding(.bottom, Metrics.contentPadding)
-                    .allowsHitTesting(false)
+                .padding(8)
+                .padding(.bottom, 120)
             }
+            .scrollIndicators(.never)
+            // Vệt mờ phải nằm TRONG tấm kính mới được bo góc theo nó. Để ngoài như trước thì nó
+            // là một hình chữ nhật rộng hơn tấm kính 26pt mỗi bên, hai góc dưới thò hẳn ra.
+            .overlay(alignment: .bottom) { BottomFade(height: 120) }
+            .glass()
+            .padding(.horizontal, Metrics.contentPadding)
+            // Chừa chỗ cho nút tròn thay vì `contentPadding`. Nút cao 84 và tâm nó nằm trên mép
+            // tấm nền 16pt, tức đỉnh nút cách đáy 58 — để lề 26 thì viền dưới tấm kính chạy
+            // ngang qua GIỮA nút, đọc ra thành một vòng tròn mờ dán đè lên bảng.
+            .padding(.bottom, Metrics.bottomActionRoom)
         }
     }
 
@@ -131,8 +133,8 @@ struct LargeOldView: View {
                 .font(.system(size: 12.5, weight: .medium))
                 .foregroundStyle(Palette.textSecond)
         }
-        // Chừa chỗ cho nút tròn mà khung app vẽ đè lên vùng này.
-        .padding(.bottom, Metrics.bottomActionRoom)
+        // Nằm TRONG tấm kính, cách mép dưới của nó 16pt — mép kính nay ở đúng `bottomActionRoom`.
+        .padding(.bottom, Metrics.bottomActionRoom + 16)
     }
 
     private func pickRoot() {

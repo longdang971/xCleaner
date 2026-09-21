@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import AppKit
+import SwiftUI
 
 /// Bộ kiểm tra chạy được từ dòng lệnh: `XCLEANER_SELFTEST=1`.
 /// Chỉ đụng vào một thư mục thử nghiệm riêng trong thư mục nhà, không chạm dữ liệu thật.
@@ -39,6 +40,9 @@ enum SelfTest {
         testRegressionGuards()
         testUpdater()
         testCountingValue()
+        testPageGeometry()
+        testBottomStripGate()
+        testIntroBadges()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
     }
@@ -1163,6 +1167,115 @@ enum SelfTest {
         // Không phân tích được thì thà mất hiệu ứng còn hơn hiện sai số.
         check("chuỗi không phải số thì trả lại nguyên vẹn",
               Fmt.countingValue(finalValue: "—", fraction: 0.5) == "—")
+    }
+    /// Khuôn cắt của TRANG chỉ được phủ đúng vùng trang: không thò xuống dải trong suốt ở đáy,
+    /// cũng không trùm lên dải thanh tiêu đề.
+    ///
+    /// Hai lỗi người dùng nhìn thấy khi đổi qua lại giữa hai mục KHÔNG có nút tròn (Gỡ ứng dụng
+    /// và Khởi động cùng máy) đều từ đây mà ra:
+    ///
+    /// - Bướu tròn trong `PageClip` là đồ thừa từ hồi nút còn nằm trong trang. Nút nay do
+    ///   `RootView` vẽ ở NGOÀI lớp bị đẩy, nên bướu ấy chẳng chừa đường cho ai nữa — nó chỉ
+    ///   cho trang đang trượt vẽ lọt xuống dải trong suốt, thành một vòng tròn nội dung lơ
+    ///   lửng trên desktop. Trang nào có nút thì nút với quầng sáng che mất nên không ai thấy.
+    /// - Khuôn cũ bắt đầu từ mép trên cửa sổ, tức trùm luôn 46pt thanh tiêu đề. Trang đang bị
+    ///   đẩy ra vẽ vào đó, và vì lò xo tắt dần theo hàm mũ nên mấy chục pt cuối bò rất lâu —
+    ///   một vệt nội dung của trang cũ đứng lại ở đỉnh app gần một giây rồi mới tắt.
+    private static func testPageGeometry() {
+        print("[Bố cục] khuôn cắt trang và khuôn tấm nền")
+
+        let rect = CGRect(x: 0, y: 0, width: 1140, height: 652)
+        let page = PageClip().path(in: rect).boundingRect
+
+        check("khuôn trang không thò xuống dưới tấm nền",
+              page.maxY <= rect.maxY + 0.01,
+              "(chạm tới \(page.maxY), đáy tấm nền \(rect.maxY))")
+        check("khuôn trang chừa đúng dải thanh tiêu đề",
+              abs(page.minY - Metrics.titleBarHeight) < 0.01,
+              "(bắt đầu từ \(page.minY), cần \(Metrics.titleBarHeight))")
+        check("khuôn trang vẫn rộng bằng cả vùng nội dung",
+              abs(page.minX - rect.minX) < 0.01 && abs(page.maxX - rect.maxX) < 0.01,
+              "(\(page.minX)…\(page.maxX))")
+
+        // Khuôn của TẤM NỀN thì ngược lại: bướu tròn phải còn, vì chính nút tròn nằm ở đó.
+        let card = CardShape().path(in: rect).boundingRect
+        check("khuôn tấm nền vẫn chừa chỗ cho nút tròn thò ra",
+              abs(card.maxY - (rect.maxY + Metrics.actionButtonHalo - 16)) < 0.01,
+              "(chạm tới \(card.maxY), cần \(rect.maxY + Metrics.actionButtonHalo - 16))")
+        check("dải trong suốt ở đáy cửa sổ đủ chứa bướu tròn",
+              Metrics.windowBottomInset >= Metrics.actionButtonHalo - 16,
+              "(\(Metrics.windowBottomInset) < \(Metrics.actionButtonHalo - 16))")
+    }
+
+    /// Dải trong suốt ở đáy cửa sổ phải cho cú bấm đi xuyên xuống app phía sau — trừ đúng cái
+    /// nút tròn. Đo được trước khi sửa: đưa xCleaner lên trước rồi bấm vào giữa dải, app đứng
+    /// trước vẫn là xCleaner; bấm ra ngoài khung cửa sổ cùng độ cao thì app sau lên ngay.
+    private static func testBottomStripGate() {
+        print("[Cửa sổ] dải trống ở đáy cho bấm xuyên qua")
+
+        // Toạ độ AppKit: gốc góc DƯỚI-trái.
+        let frame = CGRect(x: 500, y: 300, width: 1140, height: 752)
+        let cardBottom = frame.minY + Metrics.windowBottomInset
+        let buttonCenter = CGPoint(x: frame.midX + Metrics.sidebarWidth / 2, y: cardBottom + 16)
+        func dead(_ p: CGPoint, hasButton: Bool = true) -> Bool {
+            BottomStripMouseGate.isDeadZone(p, windowFrame: frame, hasButton: hasButton)
+        }
+
+        check("giữa dải trống: bấm xuyên qua",
+              dead(CGPoint(x: frame.minX + 200, y: cardBottom - 40)))
+        check("ngay trên mép tấm nền: vẫn là app",
+              !dead(CGPoint(x: frame.minX + 200, y: cardBottom + 2)))
+        check("tâm nút tròn: vẫn là app", !dead(buttonCenter))
+        check("mép nút tròn: vẫn là app",
+              !dead(CGPoint(x: buttonCenter.x + BottomStripMouseGate.liveRadius - 2,
+                            y: buttonCenter.y)))
+
+        // Quầng sáng loang gần hết dải nhưng nó là ánh sáng của nút hắt ra, không phải chỗ bấm.
+        check("quầng sáng quanh nút: bấm xuyên qua",
+              dead(CGPoint(x: buttonCenter.x, y: buttonCenter.y - 84)))
+
+        // Nửa dưới nút thò xuống dải trống: còn nút thì đó vẫn là nút, hết nút thì là chỗ trống.
+        let underButton = CGPoint(x: buttonCenter.x, y: cardBottom - 10)
+        check("nửa nút thò xuống dải: vẫn là app", !dead(underButton))
+        check("trang không có nút: cả dải bấm xuyên qua",
+              dead(underButton, hasButton: false))
+        check("ngoài khung cửa sổ: không đụng tới",
+              !dead(CGPoint(x: frame.minX - 10, y: cardBottom - 40)))
+    }
+
+    /// Mỗi mục một dáng viên biểu tượng, như CleanMyMac — chứ không phải cùng một hình đổi màu.
+    /// Màu thì đổi theo nền của chính mục ấy nên không dùng để phân biệt được; dáng thì có.
+    private static func testIntroBadges() {
+        print("[Giới thiệu] dáng viên biểu tượng")
+
+        let rect = CGRect(x: 0, y: 0, width: 100, height: 100)
+
+        let pennant = PennantBadge().path(in: rect)
+        check("viên cờ nằm gọn trong khung",
+              rect.insetBy(dx: -0.01, dy: -0.01).contains(pennant.boundingRect),
+              "(\(pennant.boundingRect))")
+        check("viên cờ bị khoét chữ V ở mép dưới",
+              !pennant.contains(CGPoint(x: rect.midX, y: rect.maxY - 2)))
+        check("hai mũi của viên cờ vẫn còn",
+              pennant.contains(CGPoint(x: rect.minX + 6, y: rect.maxY - 2)) &&
+              pennant.contains(CGPoint(x: rect.maxX - 6, y: rect.maxY - 2)))
+        check("nửa trên viên cờ đặc", pennant.contains(CGPoint(x: rect.midX, y: rect.midY)))
+
+        let petal = PetalBadge().path(in: rect)
+        check("cánh hoa nằm gọn trong khung",
+              rect.insetBy(dx: -0.01, dy: -0.01).contains(petal.boundingRect),
+              "(\(petal.boundingRect))")
+        // Bốn góc phình ra, bốn cạnh hóp vào: điểm ở giữa cạnh phải nằm NGOÀI, điểm cùng khoảng
+        // cách ấy trên đường chéo phải nằm TRONG.
+        let r = rect.width / 2 * 0.96
+        let onEdge = CGPoint(x: rect.midX + r, y: rect.midY)
+        let onCorner = CGPoint(x: rect.midX + r * cos(.pi / 4), y: rect.midY + r * sin(.pi / 4))
+        check("giữa cạnh cánh hoa hóp vào", !petal.contains(onEdge))
+        check("góc cánh hoa phình ra", petal.contains(onCorner))
+
+        // Ba mục phải ra ba dáng khác nhau, không được trùng.
+        let shapes = [IntroBadge.squircle, .pennant, .petal].map { $0.size }
+        check("ba dáng ba kích thước khung riêng", Set(shapes.map { "\($0)" }).count == 3)
     }
 }
 #endif

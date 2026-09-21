@@ -188,22 +188,29 @@ extension AnyTransition {
     }
 }
 
-/// Khuôn của VÙNG NỘI DUNG: chữ nhật, cộng một bướu tròn ở giữa mép dưới cho nút tròn thò ra.
+/// Khuôn của VÙNG NỘI DUNG: đúng chữ nhật mà trang được phép vẽ, không hơn một pt.
 ///
-/// Khuôn này đứng yên trong khi trang trượt qua nó, nên trang bị đẩy xuống không tràn xuống dải
-/// trong suốt ở đáy cửa sổ, còn trang bị đẩy lên thì chui xuống dưới thanh tiêu đề. Không có nó
-/// thì trang đang đẩy phải mờ thật nhanh để giấu phần tràn — và mờ nhanh thì mất luôn cú đẩy.
+/// Khuôn này đứng yên trong khi trang trượt qua nó, nên trang bị đẩy ra khỏi màn không tràn
+/// xuống dải trong suốt ở đáy cửa sổ và cũng không bò lên thanh tiêu đề. Không có nó thì trang
+/// đang đẩy phải mờ thật nhanh để giấu phần tràn — và mờ nhanh thì mất luôn cú đẩy.
+///
+/// **Không có bướu tròn ở đây.** Hồi nút tròn còn nằm trong trang thì khuôn phải chừa đường cho
+/// nó thò ra; từ lúc `RootView` nhấc nút ra vẽ ở ngoài lớp bị đẩy, bướu ấy không chừa chỗ cho ai
+/// nữa mà chỉ mở một lỗ hổng: trang đang trượt vẽ lọt qua, thành một vòng tròn nội dung lơ lửng
+/// trên desktop ngay chỗ đáng lẽ là nút. Mục nào có nút thì nút với quầng sáng che kín nên không
+/// ai thấy — chỉ Gỡ ứng dụng với Khởi động cùng máy, hai mục không có nút, là lộ. Bướu tròn nay
+/// chỉ còn trong `CardShape`, nơi nó thật sự cần.
 struct PageClip: Shape {
-    var buttonRadius: CGFloat = Metrics.actionButtonHalo
-    var buttonCenterLift: CGFloat = 16
+    /// Chừa nguyên dải thanh tiêu đề. Lúc đứng yên thì chẳng khác gì — trang vốn bắt đầu ngay
+    /// dưới dải này. Lúc đẩy thì khác hẳn: lò xo tắt dần theo hàm mũ, nên mấy chục pt cuối của
+    /// quãng đẩy bò rất chậm, và nếu khuôn kéo lên tới mép trên cửa sổ thì cái vệt cuối cùng
+    /// của trang cũ đứng lại cạnh tên cửa sổ gần một giây rồi mới tắt. Cắt sớm 46pt là cắt đúng
+    /// đoạn bò ấy: trang cũ khuất hẳn ở khoảng 0,29s thay vì 0,73s.
+    var topInset: CGFloat = Metrics.titleBarHeight
 
     func path(in rect: CGRect) -> Path {
-        var p = Path(rect)
-        p.addEllipse(in: CGRect(x: rect.midX - buttonRadius,
-                                y: rect.maxY - buttonCenterLift - buttonRadius,
-                                width: buttonRadius * 2,
-                                height: buttonRadius * 2))
-        return p
+        Path(CGRect(x: rect.minX, y: rect.minY + topInset,
+                    width: rect.width, height: max(0, rect.height - topInset)))
     }
 }
 

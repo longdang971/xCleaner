@@ -91,7 +91,8 @@ struct DuplicatesView: View {
                         subtitle: "So khớp nội dung từng byte, không dựa vào tên tệp. Tìm trong Documents, Downloads, Desktop, Pictures và Movies.",
                         icon: CleanModule.duplicates.icon,
                         gem: skin.gem,
-                        highlights: CleanModule.duplicates.highlights) {
+                        highlights: CleanModule.duplicates.highlights,
+                        badge: .petal) {
                 ActionButton(title: "Chọn thư mục khác…", systemImage: "folder") { pickRoots() }
             }
             Spacer()

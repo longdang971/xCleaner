@@ -6,6 +6,8 @@ struct SidebarView: View {
     @Binding var selection: CleanModule
     /// Cài đặt là một trang như các mục quét, nên hàng của nó cũng sáng lên khi đang mở.
     var settingsActive: Bool = false
+    /// Còn thứ trong Cài đặt cần người dùng ra tay — hiện nay là chưa cấp Toàn quyền truy cập đĩa.
+    var settingsNeedsAttention: Bool = false
     /// Tông màu của TRANG đang xem — dải này nở ra thì đục bằng chính màu ấy.
     var skin: ModuleSkin = ModuleSkin.skin(for: .smartScan)
     var onOpenSettings: () -> Void = {}
@@ -142,6 +144,9 @@ struct SidebarView: View {
             HStack(spacing: expanded ? 14 : 0) {
                 SidebarGlyph(icon: "gearshape", colors: ModuleSkin.settings.gem,
                              active: settingsActive, hovering: settingsHovered)
+                    .overlay(alignment: .topTrailing) {
+                        if settingsNeedsAttention { AttentionDot() }
+                    }
                     .frame(maxWidth: expanded ? nil : .infinity)
 
                 if expanded {
@@ -175,6 +180,28 @@ struct SidebarView: View {
         .padding(.horizontal, expanded ? 12 : 14)
         .help(expanded ? "" : "Cài đặt")
         .onHover { h in withAnimation(Motion.gentle) { settingsHovered = h } }
+    }
+}
+
+/// Chấm than đỏ nhỏ, nằm chồm lên góc trên bên phải của một biểu tượng.
+///
+/// Vành tối mảnh quanh chấm là bắt buộc: dải sidebar đổi màu theo từng mục (hồng, chàm, cam,
+/// teal) nên chấm đỏ trần có lúc gần như biến mất vào nền hồng/cam.
+struct AttentionDot: View {
+    var diameter: CGFloat = 12
+
+    var body: some View {
+        Image(systemName: "exclamationmark.circle.fill")
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(.white, Palette.danger)
+            .font(.system(size: diameter, weight: .bold))
+            .background(Circle().fill(.black.opacity(0.55)).blur(radius: 2))
+            .shadow(color: .black.opacity(0.45), radius: 1.5)
+            // Chồm ra ngoài ký hiệu một chút cho nó đọc ra là "gắn thêm vào", không phải một
+            // phần của chính cái bánh răng.
+            .offset(x: 3, y: -2)
+            .transition(.scale.combined(with: .opacity))
+            .accessibilityLabel("Có mục cần bạn xử lý trong Cài đặt")
     }
 }
 

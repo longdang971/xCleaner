@@ -110,7 +110,10 @@ struct SettingsView: View {
                 }
             }
 
-            SettingCard {
+            // Cấp rồi thì thẻ này biến mất: nó là một việc phải làm, không phải một tuỳ chọn để
+            // xem lại. Còn đó mà không bấm được gì thì người dùng tưởng mình chưa cấp xong.
+            if !app.hasFullDiskAccess {
+              SettingCard {
                 SettingRow(title: "Toàn quyền truy cập đĩa",
                            detail: "Cấp quyền này để xCleaner đọc được Thùng rác, dữ liệu Safari, Mail và danh sách mở gần đây của các app. Sau khi cấp, thoát hẳn rồi mở lại app.") {
                     ActionButton(title: "Mở Cài đặt…", systemImage: "arrow.up.forward.app") {
@@ -119,8 +122,11 @@ struct SettingsView: View {
                         openFullDiskAccess()
                     }
                 }
+              }
             }
         }
+        .animation(Motion.gentle, value: app.hasFullDiskAccess)
+        .onAppear { app.refreshFullDiskAccess() }
     }
 
     // MARK: Quét

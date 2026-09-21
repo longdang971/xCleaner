@@ -93,8 +93,127 @@ private struct WindowConfigurator: NSViewRepresentable {
             // thì thấy rõ, tắt đi là sạch.
             w.hasShadow = false
             w.standardWindowButton(.zoomButton)?.isEnabled = true
+            // Cửa sổ mặc định không gửi sự kiện "chuột vừa đi qua"; không bật thì cái cổng
+            // dưới đây mù một nửa (chỉ thấy đường ra, không thấy đường vào).
+            w.acceptsMouseMovedEvents = true
         }
         return v
     }
     func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+/// Mắc cái cổng chuột vào cửa sổ, và bảo nó trang đang xem có nút tròn hay không.
+struct BottomStripGate: NSViewRepresentable {
+    /// Trang đang xem có nút tròn ở đáy hay không. Không có thì cả dải đều cho bấm xuyên qua.
+    var hasButton: Bool
+
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        DispatchQueue.main.async {
+            context.coordinator.attach(to: v.window)
+            context.coordinator.hasButton = hasButton
+        }
+        return v
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if context.coordinator.window == nil { context.coordinator.attach(to: nsView.window) }
+        context.coordinator.hasButton = hasButton
+    }
+
+    func makeCoordinator() -> BottomStripMouseGate { BottomStripMouseGate() }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: BottomStripMouseGate) {
+        coordinator.detach()
+    }
+}
+
+/// Dải trong suốt ở đáy cửa sổ **vẫn là cửa sổ**: bấm vào đó macOS vẫn tính là bấm vào xCleaner,
+/// nên app nằm sau không được đưa lên. Mắt thấy desktop, tay bấm thì không qua được — đọc ra
+/// đúng như app đang lỗi.
+///
+/// Đã đo bằng CGEvent: đưa xCleaner lên trước rồi bấm vào giữa dải (xa nút) — app đứng trước vẫn
+/// là xCleaner; bấm ra ngoài khung cửa sổ cùng độ cao ấy — Chrome lên ngay. Tức là cửa sổ nuốt
+/// cú bấm chứ không phải máy không nhận.
+///
+/// macOS không có API "khoét lỗ" cho cửa sổ: thứ duy nhất có là `ignoresMouseEvents`, và nó áp
+/// cho CẢ cửa sổ. Nên cách duy nhất là bám theo con trỏ — vào vùng chết thì bật cờ, ra thì tắt.
+/// Lúc cờ đang bật, cửa sổ không nhận chuột nữa nên tin "con trỏ đã đi ra" chỉ về qua monitor
+/// TOÀN CỤC (sự kiện lúc ấy thuộc về app khác); chỉ có monitor cục bộ là không bao giờ thoát ra
+/// được nữa.
+///
+/// Vùng sống trong dải chỉ đúng bằng cái nút tròn, KHÔNG tính quầng sáng: quầng là ánh sáng của
+/// nút hắt ra chứ không phải chỗ bấm được, và nó loang gần hết dải.
+final class BottomStripMouseGate {
+    private(set) weak var window: NSWindow?
+    private var monitors: [Any] = []
+    private var observers: [NSObjectProtocol] = []
+
+    var hasButton: Bool = true { didSet { if hasButton != oldValue { update() } } }
+
+    /// Bán kính vùng còn bấm được quanh tâm nút: nửa nút (42) cộng 2pt cho mép.
+    static let liveRadius: CGFloat = 44
+
+    func attach(to window: NSWindow?) {
+        guard let window, self.window !== window else { return }
+        detach()
+        self.window = window
+
+        let kinds: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged,
+                                            .leftMouseUp, .rightMouseUp]
+        if let m = NSEvent.addGlobalMonitorForEvents(matching: kinds, handler: { [weak self] _ in
+            self?.update()
+        }) { monitors.append(m) }
+        if let m = NSEvent.addLocalMonitorForEvents(matching: kinds, handler: { [weak self] e in
+            self?.update(); return e
+        }) { monitors.append(m) }
+
+        // Cửa sổ tự dịch chỗ dưới một con trỏ đang đứng yên thì không có sự kiện chuột nào bắn ra.
+        for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification,
+                     NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification] {
+            observers.append(NotificationCenter.default.addObserver(
+                forName: name, object: window, queue: .main) { [weak self] _ in self?.update() })
+        }
+        update()
+    }
+
+    func detach() {
+        monitors.forEach { NSEvent.removeMonitor($0) }
+        monitors.removeAll()
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+        observers.removeAll()
+        window?.ignoresMouseEvents = false
+        window = nil
+    }
+
+    private func update() {
+        guard let w = window, w.isVisible else { return }
+        // Đang giữ chuột thì đừng đổi gì: kéo cửa sổ bằng thân cửa sổ mà giữa chừng cửa sổ thôi
+        // nhận chuột là cú kéo đứt ngang.
+        guard NSEvent.pressedMouseButtons == 0 else { return }
+        let dead = isDead(NSEvent.mouseLocation, in: w)
+        if w.ignoresMouseEvents != dead { w.ignoresMouseEvents = dead }
+    }
+
+    private func isDead(_ point: CGPoint, in w: NSWindow) -> Bool {
+        // Toàn màn hình thì không còn dải trống nào — `RootView` cũng hạ `bottomInset` về 0.
+        guard !w.styleMask.contains(.fullScreen) else { return false }
+        return Self.isDeadZone(point, windowFrame: w.frame, hasButton: hasButton)
+    }
+
+    /// `point` và `windowFrame` theo toạ độ màn hình của AppKit: gốc ở góc DƯỚI-trái, y hướng lên.
+    static func isDeadZone(_ point: CGPoint, windowFrame frame: CGRect, hasButton: Bool) -> Bool {
+        guard frame.contains(point) else { return false }
+
+        // Mép dưới tấm nền. Dưới nó là dải trong suốt.
+        let cardBottom = frame.minY + Metrics.windowBottomInset
+        guard point.y < cardBottom else { return false }
+
+        guard hasButton else { return true }
+
+        // Nút căn giữa VÙNG NỘI DUNG (đã bị sidebar ăn mất 76pt bên trái), và tâm nó nằm cao hơn
+        // mép tấm nền 16pt — nút cao 84, thò xuống 26.
+        let center = CGPoint(x: frame.midX + Metrics.sidebarWidth / 2, y: cardBottom + 16)
+        return hypot(point.x - center.x, point.y - center.y) > liveRadius
+    }
 }

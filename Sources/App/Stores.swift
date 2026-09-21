@@ -1231,7 +1231,43 @@ final class AppState: ObservableObject {
     @Published var showSettings = false
     /// Bấm "Kiểm tra cập nhật…" ở menu: mở trang Cài đặt rồi mới kiểm, vì đó là nơi bày kết quả.
     @Published var requestUpdateCheck = false
+
+    /// App đã được cấp Toàn quyền truy cập đĩa chưa.
+    ///
+    /// Hỏi lại mỗi lần app được đưa lên trước: người dùng đi sang Cài đặt hệ thống cấp quyền rồi
+    /// quay về, và phép thử là một cú đọc thật (`~/.Trash`) chứ không phải cờ nhớ sẵn, nên nó lật
+    /// ngay khi macOS bắt đầu cho đọc. Đọc luôn một lần lúc dựng để không bị "nháy": khởi tạo
+    /// bằng `true` rồi mới hạ xuống thì cái chấm đỏ nhảy ra sau khi cửa sổ đã hiện.
+    @Published private(set) var hasFullDiskAccess = AppState.probeFullDiskAccess()
+
     let settings = AppSettings()
+
+    private var becameActive: NSObjectProtocol?
+
+    init() {
+        becameActive = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshFullDiskAccess() }
+        }
+    }
+
+    deinit {
+        if let becameActive { NotificationCenter.default.removeObserver(becameActive) }
+    }
+
+    func refreshFullDiskAccess() {
+        let now = AppState.probeFullDiskAccess()
+        if now != hasFullDiskAccess { hasFullDiskAccess = now }
+    }
+
+    private static func probeFullDiskAccess() -> Bool {
+        #if DEBUG
+        // Để chụp được cả hai trạng thái mà không phải đi cấp/thu quyền thật.
+        if let fake = ProcessInfo.processInfo.environment["XCLEANER_FAKE_FDA"] { return fake == "1" }
+        #endif
+        return FileUtils.hasFullDiskAccess
+    }
 
     private var scanStores: [CleanModule: ScanStore] = [:]
     lazy var uninstall = UninstallStore(settings: settings)
