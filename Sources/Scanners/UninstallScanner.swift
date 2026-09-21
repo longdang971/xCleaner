@@ -34,13 +34,22 @@ struct UninstallScanner {
         ("Library/Cookies",                       false, "Cookie"),
         ("Library/LaunchAgents",                  false, "Tác vụ nền"),
         ("Library/Application Scripts",           false, "Script ứng dụng"),
+        // Bốn chỗ dưới đây nằm SÂU HƠN một tầng so với các thư mục trên. Vòng quét chỉ duyệt con
+        // trực tiếp của mỗi thư mục, nên không kể tên ra ở đây thì không bao giờ tìm tới —
+        // AppCleaner tìm được `com.titanium.OnyX.help*5.0.2` trong `com.apple.helpd/Generated`
+        // còn xCleaner thì không, chính vì chuyện này.
+        ("Library/Caches/com.apple.helpd/Generated", false, "Trợ giúp"),
+        ("Library/Preferences/ByHost",            false, "Tuỳ chọn theo máy"),
+        ("Library/Application Support/CrashReporter", false, "Báo cáo sự cố"),
+        ("Library/Logs/DiagnosticReports",        false, "Nhật ký sự cố"),
         ("/Library/Application Support",          true,  "Dữ liệu ứng dụng (hệ thống)"),
         ("/Library/Caches",                       true,  "Bộ nhớ đệm (hệ thống)"),
         ("/Library/Preferences",                  true,  "Tuỳ chọn (hệ thống)"),
         ("/Library/Logs",                         true,  "Nhật ký (hệ thống)"),
         ("/Library/LaunchAgents",                 true,  "Tác vụ nền (hệ thống)"),
         ("/Library/LaunchDaemons",                true,  "Dịch vụ nền"),
-        ("/Library/PrivilegedHelperTools",        true,  "Công cụ quyền cao")
+        ("/Library/PrivilegedHelperTools",        true,  "Công cụ quyền cao"),
+        ("/Library/Logs/DiagnosticReports",       true,  "Nhật ký sự cố (hệ thống)")
     ]
 
     // MARK: - Danh sách app

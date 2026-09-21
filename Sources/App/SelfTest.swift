@@ -620,7 +620,13 @@ enum SelfTest {
             ("Library/Logs", bundleID),
             ("Library/Saved Application State", "\(bundleID).savedState"),
             ("Library/HTTPStorages", bundleID),
-            ("Library/LaunchAgents", "\(bundleID).plist")
+            ("Library/LaunchAgents", "\(bundleID).plist"),
+            // Bốn chỗ nằm sâu hơn một tầng. Chúng là lý do AppCleaner từng tìm được nhiều hơn.
+            ("Library/Caches/com.apple.helpd/Generated", "\(bundleID).help*1.0"),
+            ("Library/Preferences/ByHost",
+             "\(bundleID).00000000-1111-2222-3333-444444444444.plist"),
+            ("Library/Application Support/CrashReporter", "\(appName)_selftest.plist"),
+            ("Library/Logs/DiagnosticReports", "\(appName)_2026-09-21-000000_selftest.ips")
         ]
         for (dir, name) in leftovers {
             let parent = FileUtils.homePath(dir)
