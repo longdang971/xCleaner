@@ -61,7 +61,12 @@ enum LeftoverPanel {
             onClose()
             // Thả ở nhịp sau: `finish` đang chạy BÊN TRONG `windowWillClose` của chính cái
             // delegate này, thả ngay là rút chân thang lúc còn đứng trên đó.
+            //
+            // Và chỉ thả ĐÚNG cái bảng này: tới nhịp sau có thể đã có bảng mới của app kế tiếp
+            // ngồi vào chỗ `current`, xoá trắng là gỡ mất delegate của nó (bảng mới đóng sẽ không
+            // ai nghe, hàng đợi kẹt lại y như lỗi đã sửa ở lượt trước).
             DispatchQueue.main.async {
+                guard current === panel else { return }
                 current = nil
                 closer = nil
             }

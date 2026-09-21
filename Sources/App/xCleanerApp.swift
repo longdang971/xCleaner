@@ -114,7 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // `orderOut` chứ không `close`, để lần sau người dùng bấm icon là hiện lại được.
             windowHider = NotificationCenter.default.addObserver(
                 forName: NSWindow.didUpdateNotification, object: nil, queue: .main) { [weak self] n in
-                    guard let w = n.object as? NSWindow, !(w is NSPanel), w.isVisible else { return }
+                    // `canBecomeMain` để chắc đây là cửa sổ chính chứ không phải tooltip hay
+                    // popover: giấu nhầm một cái như thế rồi tự gỡ bẫy là cửa sổ chính lọt ra.
+                    guard let w = n.object as? NSWindow, !(w is NSPanel),
+                          w.canBecomeMain, w.isVisible else { return }
                     w.orderOut(nil)
                     // Cửa sổ chính chỉ được dựng đúng một lần lúc khởi động. Giấu xong là gỡ cái
                     // bẫy ngay, không thì nó rình suốt đời tiến trình và đẩy luôn những cửa sổ

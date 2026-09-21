@@ -1400,6 +1400,10 @@ enum SelfTest {
                             bundleID: Bundle.main.bundleIdentifier ?? "com.pikalong.xCleaner",
                             name: "xCleaner", version: "1.0")
         check("nhận ra chính xCleaner bị kéo vào Thùng rác", SmartDeleteController.isSelf(me))
+        check("bản đang chạy còn đó thì đừng thoát (chỉ là bản sao bị xoá)",
+              !SmartDeleteController.shouldQuitAfterSelfTrashed(runningBundleExists: true))
+        check("bản đang chạy mất rồi thì thoát",
+              SmartDeleteController.shouldQuitAfterSelfTrashed(runningBundleExists: false))
     }
 }
 #endif
