@@ -116,7 +116,7 @@ struct SettingsView: View {
                     detail: "Khi bạn kéo một ứng dụng vào Thùng rác, xCleaner hiện một cửa sổ nhỏ liệt kê những tệp app đó để lại để dọn luôn. Để làm được việc này, xCleaner ở lại chạy nền sau khi bạn đóng cửa sổ — không có icon ở Dock.",
                     isOn: $settings.smartDelete, accent: accent)
             }
-            .onChange(of: settings.smartDelete) { _ in
+            .onChange(of: settings.smartDelete) {
                 SmartDeleteController.shared.applySetting()
             }
 

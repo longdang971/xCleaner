@@ -92,10 +92,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let other = NSRunningApplication
             .runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
             .first(where: { $0.processIdentifier != getpid() }) {
+            // `activate` không đủ: tiến trình kia thường là cái đang TRỰC dưới nền, không có cửa
+            // sổ nào để đưa lên. Kích hoạt suông là người dùng bấm icon mà màn hình không đổi gì.
+            DistributedNotificationCenter.default().postNotificationName(
+                Self.openRequest, object: nil, userInfo: nil, deliverImmediately: true)
             other.activate(options: [.activateAllWindows])
             NSApp.terminate(nil)
             return
         }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: Self.openRequest, object: nil, queue: .main) { [weak self] _ in
+                self?.enterForeground()
+            }
 
         if RunMode.current == .watch {
             NSApp.setActivationPolicy(.accessory)
@@ -104,9 +113,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // không nhận `if #available`.) Nên cứ để nó dựng rồi đẩy ra khỏi màn hình ngay —
             // `orderOut` chứ không `close`, để lần sau người dùng bấm icon là hiện lại được.
             windowHider = NotificationCenter.default.addObserver(
-                forName: NSWindow.didUpdateNotification, object: nil, queue: .main) { n in
+                forName: NSWindow.didUpdateNotification, object: nil, queue: .main) { [weak self] n in
                     guard let w = n.object as? NSWindow, !(w is NSPanel), w.isVisible else { return }
                     w.orderOut(nil)
+                    // Cửa sổ chính chỉ được dựng đúng một lần lúc khởi động. Giấu xong là gỡ cái
+                    // bẫy ngay, không thì nó rình suốt đời tiến trình và đẩy luôn những cửa sổ
+                    // khác (tooltip, popover — không phải cái nào cũng là NSPanel).
+                    self?.removeWindowHider()
                 }
         } else {
             NSApp.setActivationPolicy(.regular)
@@ -127,13 +140,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
     }
 
+    /// Tên thông báo liên tiến trình: "có người vừa bấm vào icon, mở cửa sổ chính ra".
+    private static let openRequest = Notification.Name("com.pikalong.xCleaner.openMainWindow")
+
+    private func removeWindowHider() {
+        guard let k = windowHider else { return }
+        NotificationCenter.default.removeObserver(k)
+        windowHider = nil
+    }
+
     func enterForeground() {
-        // Ở chế độ trực, mọi cửa sổ vừa hiện đều bị đóng ngay. Người dùng đã chủ động mở app thì
-        // gỡ cái bẫy đó ra, không thì cửa sổ chính vừa dựng đã tắt.
-        if let k = windowHider {
-            NotificationCenter.default.removeObserver(k)
-            windowHider = nil
-        }
+        // Ở chế độ trực, cửa sổ vừa hiện là bị đẩy đi ngay. Người dùng đã chủ động mở app thì gỡ
+        // cái bẫy đó ra, không thì cửa sổ chính vừa dựng đã biến mất.
+        removeWindowHider()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         // Cửa sổ chính không bao giờ bị huỷ (`isReleasedWhenClosed = false` ở

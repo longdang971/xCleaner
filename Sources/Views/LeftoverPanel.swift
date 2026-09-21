@@ -51,14 +51,24 @@ enum LeftoverPanel {
             panel.standardWindowButton(b)?.isHidden = true
         }
 
+        // Mọi đường đóng đều đi qua `windowWillClose`, kể cả khi hệ thống tự dẹp cửa sổ. Nếu
+        // `dismiss` vừa `close()` vừa tự gọi `onClose` thì cú đóng do hệ thống phát ra sẽ chạy
+        // vòng thứ hai ngay trong lúc cửa sổ đang đóng dở.
         var closed = false
-        let dismiss: () -> Void = {
-            guard !closed else { return }      // Esc + nút Đóng + tự đóng sau khi dọn: ba đường
-            closed = true                      // cùng dẫn tới đây, chỉ được chạy một lần.
-            current = nil
-            closer = nil
-            panel.close()
+        let finish: () -> Void = {
+            guard !closed else { return }
+            closed = true
             onClose()
+            // Thả ở nhịp sau: `finish` đang chạy BÊN TRONG `windowWillClose` của chính cái
+            // delegate này, thả ngay là rút chân thang lúc còn đứng trên đó.
+            DispatchQueue.main.async {
+                current = nil
+                closer = nil
+            }
+        }
+        let dismiss: () -> Void = {
+            guard !closed else { return }
+            panel.close()
         }
 
         panel.contentView = NSHostingView(
@@ -66,7 +76,7 @@ enum LeftoverPanel {
         // Bảng có thể bị đóng bằng đường khác (một bảng mới đẩy nó đi, hệ thống dẹp cửa sổ...).
         // Không bắt lấy lúc ấy thì `onClose` không bao giờ chạy, và `SmartDeleteController` nằm
         // chờ mãi ở cờ `busy` — app tiếp theo bị xoá sẽ không được hỏi nữa.
-        closer = PanelCloser(onClose: dismiss)
+        closer = PanelCloser(onClose: finish)
         panel.delegate = closer
 
         if let screen = NSScreen.main {
@@ -126,13 +136,13 @@ final class LeftoverPanelModel: ObservableObject {
         guard !chosen.isEmpty else { done(); return }
         phase = .removing
 
-        let request = Remover.Request(
-            items: chosen,
-            moveToTrash: UserDefaults.standard.bool(forKey: "moveToTrash"),
-            adminPrompt: "xCleaner cần quyền quản trị để dọn tàn dư của \(app.name).")
+        let toTrash = UserDefaults.standard.bool(forKey: "moveToTrash")
+        let prompt = "xCleaner cần quyền quản trị để dọn tàn dư của \(app.name)."
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = Remover.perform(request) { _, _ in }
+            let result = Remover.perform(
+                Remover.Request(items: chosen, moveToTrash: toTrash, adminPrompt: prompt)
+            ) { _, _ in }
             DispatchQueue.main.async {
                 CleanLedger.shared.record(result.freedBytes)
                 // Xoá xong là đóng im lặng: không màn "đã dọn", và không kéo cửa sổ chính của app

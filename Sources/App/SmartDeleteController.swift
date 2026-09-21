@@ -105,9 +105,8 @@ final class SmartDeleteController {
 
     private func scan(_ app: TrashedApp, done: @escaping ([CleanItem]) -> Void) {
         let installed = Self.installedApp(from: app)
-        let token = CancelToken()
         DispatchQueue.global(qos: .userInitiated).async {
-            let all = UninstallScanner().leftovers(for: installed, cancel: token)
+            let all = UninstallScanner().leftovers(for: installed, cancel: CancelToken())
             let items = Self.leftoversToShow(all, bundle: app.url)
             DispatchQueue.main.async { done(items) }
         }
@@ -115,7 +114,7 @@ final class SmartDeleteController {
 
     // MARK: - Phần thuần
 
-    static func installedApp(from t: TrashedApp) -> UninstallScanner.InstalledApp {
+    nonisolated static func installedApp(from t: TrashedApp) -> UninstallScanner.InstalledApp {
         UninstallScanner.InstalledApp(id: t.bundleID, name: t.name, url: t.url,
                                       version: t.version, appSize: 0, leftoverSize: 0,
                                       lastUsed: nil, isSystemApp: false, needsAdmin: false)
@@ -123,7 +122,7 @@ final class SmartDeleteController {
 
     /// Bỏ chính bundle ra khỏi danh sách: nó đã nằm trong Thùng rác rồi, dọn nữa là thừa — và
     /// đưa nó lên danh sách tick được thì con số "đã dọn" sẽ cộng cả dung lượng app vào.
-    static func leftoversToShow(_ items: [CleanItem], bundle: URL) -> [CleanItem] {
+    nonisolated static func leftoversToShow(_ items: [CleanItem], bundle: URL) -> [CleanItem] {
         items.filter { $0.url.standardizedFileURL != bundle.standardizedFileURL }
     }
 }
