@@ -11,6 +11,8 @@ final class AppSettings: ObservableObject {
     @AppStorage("duplicateMinMB")   var duplicateMinMB: Int = 1
     @AppStorage("rememberChoices")   var rememberChoices: Bool = true
     @AppStorage("hasSeenWelcome")   var hasSeenWelcome: Bool = false
+    /// Trực Thùng rác để mời dọn tàn dư khi người dùng tự xoá một ứng dụng. Mặc định BẬT.
+    @AppStorage("smartDelete")      var smartDelete: Bool = true
 }
 
 // MARK: - Bộ tiết chế tiến trình
@@ -950,6 +952,9 @@ final class UninstallStore: ObservableObject {
         let items = leftovers.filter(\.isSelected)
         guard !items.isEmpty, let app = selectedApp else { return }
         isRemoving = true
+        // Bundle sắp rơi vào Thùng rác, và cái tai nghe Thùng rác sẽ thấy nó. Đánh dấu trước để
+        // người dùng không bị chính xCleaner hỏi "có dọn tàn dư không" ngay sau khi vừa gỡ xong.
+        SmartDeleteMemory.shared.suppress(bundleID: app.id)
 
         let request = Remover.Request(
             items: items,

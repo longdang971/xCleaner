@@ -43,6 +43,10 @@ enum SelfTest {
         testPageGeometry()
         testBottomStripGate()
         testIntroBadges()
+        testSmartDeleteMemory()
+        testTrashWatcher()
+        testLaunchAgent()
+        testSmartDeleteController()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
     }
@@ -1276,6 +1280,112 @@ enum SelfTest {
         // Ba mục phải ra ba dáng khác nhau, không được trùng.
         let shapes = [IntroBadge.squircle, .pennant, .petal].map { $0.size }
         check("ba dáng ba kích thước khung riêng", Set(shapes.map { "\($0)" }).count == 3)
+    }
+    // MARK: Dọn tàn dư khi người dùng tự xoá ứng dụng
+
+    private static func testSmartDeleteMemory() {
+        print("[SmartDelete] bảng nhớ app không hỏi lại")
+        let m = SmartDeleteMemory(storageKey: "selftest.smartDeleteSuppressed")
+        m.forgetAll()
+
+        check("chưa ghi thì không bị bỏ qua", !m.isSuppressed(bundleID: "com.acme.foo"))
+        m.suppress(bundleID: "com.acme.foo")
+        check("ghi rồi thì bỏ qua", m.isSuppressed(bundleID: "com.acme.foo"))
+        check("không phân biệt hoa thường", m.isSuppressed(bundleID: "COM.ACME.FOO"))
+        check("app khác không ảnh hưởng", !m.isSuppressed(bundleID: "com.acme.bar"))
+
+        m.stamp(bundleID: "com.acme.old", at: Date().addingTimeInterval(-SmartDeleteMemory.ttl - 60))
+        check("quá hạn thì hỏi lại", !m.isSuppressed(bundleID: "com.acme.old"))
+
+        check("luôn bỏ qua chính xCleaner",
+              m.isSuppressed(bundleID: Bundle.main.bundleIdentifier ?? "com.pikalong.xCleaner"))
+
+        m.forget(bundleID: "com.acme.foo")
+        check("quên được một mục", !m.isSuppressed(bundleID: "com.acme.foo"))
+        m.forgetAll()
+    }
+
+    private static func testTrashWatcher() {
+        print("[SmartDelete] nhận ra .app mới rơi vào Thùng rác")
+        let box = makeSandbox().appendingPathComponent("trash")
+        let fm = FileManager.default
+        try? fm.createDirectory(at: box, withIntermediateDirectories: true)
+
+        func makeApp(_ dir: URL, _ name: String, id: String?, version: String = "1.0") {
+            let contents = dir.appendingPathComponent("\(name).app/Contents")
+            try? fm.createDirectory(at: contents, withIntermediateDirectories: true)
+            var d: [String: Any] = ["CFBundleName": name, "CFBundleShortVersionString": version]
+            if let id { d["CFBundleIdentifier"] = id }
+            (d as NSDictionary).write(to: contents.appendingPathComponent("Info.plist"),
+                                      atomically: true)
+        }
+
+        makeApp(box, "Foo", id: "com.acme.foo", version: "2.1")
+        makeApp(box, "NoID", id: nil)
+        let deep = box.appendingPathComponent("Một thư mục")
+        try? fm.createDirectory(at: deep, withIntermediateDirectories: true)
+        makeApp(deep, "Nested", id: "com.acme.nested")
+        try? "x".write(to: box.appendingPathComponent("ghi chú.txt"),
+                       atomically: true, encoding: .utf8)
+
+        let found = TrashWatcher.trashedApps(in: box, ignoring: [])
+        check("thấy đúng một app", found.count == 1, "(được \(found.map(\.name)))")
+        check("đọc đúng bundle id", found.first?.bundleID == "com.acme.foo")
+        check("đọc đúng tên", found.first?.name == "Foo")
+        check("đọc đúng phiên bản", found.first?.version == "2.1")
+        check("bỏ qua bundle không có bundle id",
+              !found.contains { $0.name == "NoID" })
+        check("bỏ qua .app nằm trong thư mục khác",
+              !found.contains { $0.bundleID == "com.acme.nested" })
+
+        let ignored = TrashWatcher.trashedApps(
+            in: box, ignoring: [box.appendingPathComponent("Foo.app").path])
+        check("mục đã thấy ở lần chụp trước thì bỏ qua", ignored.isEmpty)
+    }
+
+    private static func testLaunchAgent() {
+        print("[SmartDelete] plist khởi động cùng máy")
+        let exe = "/Applications/xCleaner.app/Contents/MacOS/xCleaner"
+        let d = LaunchAgentInstaller.plistContents(executable: exe)
+        check("có Label đúng", d["Label"] as? String == "com.pikalong.xCleaner.watcher")
+        check("chạy lúc đăng nhập", d["RunAtLoad"] as? Bool == true)
+        check("không khai KeepAlive", d["KeepAlive"] == nil)
+        let args = d["ProgramArguments"] as? [String] ?? []
+        check("gọi đúng binary", args.first == exe)
+        check("truyền cờ --watch", args.last == "--watch")
+
+        check("chưa có plist thì phải ghi",
+              LaunchAgentInstaller.needsRewrite(existing: nil, executable: exe))
+        check("plist trỏ đúng chỗ thì thôi",
+              !LaunchAgentInstaller.needsRewrite(existing: d, executable: exe))
+        check("plist trỏ sai chỗ thì ghi lại",
+              LaunchAgentInstaller.needsRewrite(
+                existing: d, executable: "/Volumes/USB/xCleaner.app/Contents/MacOS/xCleaner"))
+        check("plist thiếu cờ --watch thì ghi lại",
+              LaunchAgentInstaller.needsRewrite(
+                existing: ["Label": "x", "ProgramArguments": [exe], "RunAtLoad": true],
+                executable: exe))
+    }
+
+    @MainActor
+    private static func testSmartDeleteController() {
+        print("[SmartDelete] dựng app từ bundle trong Thùng rác")
+        let t = TrashedApp(url: FileUtils.homePath(".Trash/Foo.app"),
+                           bundleID: "com.acme.foo", name: "Foo", version: "2.1")
+        let app = SmartDeleteController.installedApp(from: t)
+        check("giữ bundle id", app.id == "com.acme.foo")
+        check("giữ tên", app.name == "Foo")
+        check("trỏ vào bundle trong Thùng rác", app.url == t.url)
+        check("không đòi quyền quản trị", !app.needsAdmin)
+
+        let items = [
+            CleanItem(url: t.url, name: "Foo.app", detail: "Ứng dụng", size: 100),
+            CleanItem(url: FileUtils.homePath("Library/Caches/com.acme.foo"),
+                      name: "com.acme.foo", detail: "Bộ nhớ đệm", size: 10)
+        ]
+        let shown = SmartDeleteController.leftoversToShow(items, bundle: t.url)
+        check("bỏ chính bundle khỏi danh sách dọn", shown.count == 1)
+        check("giữ lại tàn dư", shown.first?.name == "com.acme.foo")
     }
 }
 #endif

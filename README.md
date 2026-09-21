@@ -95,6 +95,19 @@ Học theo CleanMyMac 5 nhưng dựng lại hoàn toàn bằng SwiftUI, không d
 | Tệp lớn & cũ | Duyệt thư mục theo dung lượng và ngày dùng cuối |
 | Tệp trùng lặp | Ba vòng lọc: kích thước → băm hai đầu → SHA-256 toàn bộ |
 
+## Dọn tàn dư khi bạn tự xoá ứng dụng
+
+Kéo (hoặc ⌘⌫) một ứng dụng vào Thùng rác bằng Finder: xCleaner hiện ngay một cửa sổ nhỏ liệt kê
+những tệp app đó để lại — dữ liệu, tuỳ chọn, bộ nhớ đệm, tác vụ nền — để bạn dọn luôn, không phải
+mở app và vào mục "Gỡ ứng dụng".
+
+Để bắt được lúc đó, xCleaner **ở lại chạy nền** sau khi bạn đóng cửa sổ (không có icon ở Dock,
+không có icon ở thanh menu) và tự đăng ký một LaunchAgent để trực lại từ lần đăng nhập sau. Bấm
+vào xCleaner trong Finder là cửa sổ chính hiện lại như thường. Tắt bằng công tắc **"Dọn tàn dư khi
+tôi xoá ứng dụng"** trong Cài đặt; tắt xong app quay lại thoát hẳn mỗi khi đóng cửa sổ.
+
+Cần quyền Toàn quyền truy cập đĩa (để đọc Thùng rác) — cùng quyền mà các mục quét đã cần.
+
 ## Quyền quản trị mà không có Developer ID
 
 `SMJobBless` và `SMAppService` đều đòi chứng chỉ Developer ID, nên xCleaner đi đường khác:

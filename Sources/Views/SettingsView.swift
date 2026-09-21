@@ -110,6 +110,16 @@ struct SettingsView: View {
                 }
             }
 
+            SettingCard {
+                SettingToggle(
+                    title: "Dọn tàn dư khi tôi xoá ứng dụng",
+                    detail: "Khi bạn kéo một ứng dụng vào Thùng rác, xCleaner hiện một cửa sổ nhỏ liệt kê những tệp app đó để lại để dọn luôn. Để làm được việc này, xCleaner ở lại chạy nền sau khi bạn đóng cửa sổ — không có icon ở Dock.",
+                    isOn: $settings.smartDelete, accent: accent)
+            }
+            .onChange(of: settings.smartDelete) { _ in
+                SmartDeleteController.shared.applySetting()
+            }
+
             // Cấp rồi thì thẻ này biến mất: nó là một việc phải làm, không phải một tuỳ chọn để
             // xem lại. Còn đó mà không bấm được gì thì người dùng tưởng mình chưa cấp xong.
             if !app.hasFullDiskAccess {
