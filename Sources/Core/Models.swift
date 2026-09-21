@@ -69,13 +69,6 @@ enum CleanModule: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Các module dùng chung màn hình kết quả dạng nhóm.
-    var usesGroupedResults: Bool {
-        switch self {
-        case .smartScan: return true
-        case .uninstaller, .startup, .largeOld, .duplicates: return false
-        }
-    }
 }
 
 // MARK: - Mức an toàn

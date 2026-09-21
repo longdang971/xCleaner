@@ -33,7 +33,10 @@ final class TrashWatcher {
         guard stream == nil else { return }
         // Ảnh chụp đầu tiên KHÔNG được báo lên: những gì đang nằm sẵn trong Thùng rác là chuyện
         // cũ. Báo hết thì người dùng vừa đăng nhập đã ăn một loạt cửa sổ.
-        seen = Set(Self.entries(in: directory).map(\.path))
+        //
+        // Chụp trên chính hàng đợi của luồng sự kiện: `rescan()` chạy ở đó, nên nếu chụp ở luồng
+        // gọi `start()` thì hai luồng cùng đụng vào `seen`.
+        queue.sync { seen = Set(Self.entries(in: directory).map(\.path)) }
 
         var ctx = FSEventStreamContext(version: 0,
                                        info: Unmanaged.passUnretained(self).toOpaque(),

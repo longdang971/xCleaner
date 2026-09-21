@@ -11,6 +11,8 @@ enum LeftoverPanel {
 
     /// Mỗi lúc chỉ một cửa sổ. Hàng đợi nằm ở `SmartDeleteController`.
     private static var current: FloatingPanel?
+    /// Giữ sống cái delegate bắt sự kiện đóng — `NSWindow.delegate` là tham chiếu yếu.
+    private static var closer: PanelCloser?
 
     /// Cao theo số mục, không cố định: ba dòng mà khung cao 430 thì nửa dưới là một mảng trống.
     static func height(forItems n: Int) -> CGFloat {
@@ -26,8 +28,11 @@ enum LeftoverPanel {
         let model = LeftoverPanelModel(app: app, items: items)
         let size = CGSize(width: 460, height: height(forItems: items.count))
         let panel = FloatingPanel(
+            // `.nonactivatingPanel`: bảng này nổi lên giữa lúc người dùng đang làm việc khác.
+            // Kích hoạt cả app là kéo luôn cửa sổ chính 1140×780 (nếu đang mở) đè lên việc họ
+            // đang làm — đúng thứ họ đã bảo là không được.
             contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.titled, .fullSizeContentView],
+            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered, defer: false)
 
         panel.titlebarAppearsTransparent = true
@@ -51,12 +56,18 @@ enum LeftoverPanel {
             guard !closed else { return }      // Esc + nút Đóng + tự đóng sau khi dọn: ba đường
             closed = true                      // cùng dẫn tới đây, chỉ được chạy một lần.
             current = nil
+            closer = nil
             panel.close()
             onClose()
         }
 
         panel.contentView = NSHostingView(
             rootView: LeftoverPanelView(model: model, size: size, dismiss: dismiss))
+        // Bảng có thể bị đóng bằng đường khác (một bảng mới đẩy nó đi, hệ thống dẹp cửa sổ...).
+        // Không bắt lấy lúc ấy thì `onClose` không bao giờ chạy, và `SmartDeleteController` nằm
+        // chờ mãi ở cờ `busy` — app tiếp theo bị xoá sẽ không được hỏi nữa.
+        closer = PanelCloser(onClose: dismiss)
+        panel.delegate = closer
 
         if let screen = NSScreen.main {
             let f = screen.visibleFrame
@@ -64,10 +75,17 @@ enum LeftoverPanel {
                                          y: f.midY - size.height / 2 + f.height * 0.08))
         }
         current = panel
-        // App đang ở `.accessory` nên việc này KHÔNG làm hiện icon Dock, chỉ đưa cửa sổ lên trước.
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
+        // `orderFrontRegardless` chứ không `makeKeyAndOrderFront`: đưa bảng lên trên cùng mà
+        // không cướp tiêu điểm của app người dùng đang dùng. Bấm vào bảng thì nó thành key.
+        panel.orderFrontRegardless()
     }
+}
+
+/// Báo về khi cửa sổ đóng, bất kể đóng bằng đường nào.
+private final class PanelCloser: NSObject, NSWindowDelegate {
+    private let onClose: () -> Void
+    init(onClose: @escaping () -> Void) { self.onClose = onClose }
+    func windowWillClose(_ notification: Notification) { onClose() }
 }
 
 /// `NSPanel` bình thường không nhận phím khi thanh tiêu đề bị ẩn.

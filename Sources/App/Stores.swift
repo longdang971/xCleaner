@@ -300,11 +300,6 @@ final class ScanStore: ObservableObject {
         SelectionMemory.shared.record(groups[gi].items.filter { $0.category == category })
     }
 
-    func toggleExpanded(_ groupID: String) {
-        guard let gi = groups.firstIndex(where: { $0.id == groupID }) else { return }
-        withAnimation(Motion.standard) { groups[gi].isExpanded.toggle() }
-    }
-
     /// Thoát ứng dụng đang giữ dữ liệu (trình duyệt) để việc dọn không bị ghi đè ngay sau đó.
     func quitApp(groupID: String) {
         guard let gi = groups.firstIndex(where: { $0.id == groupID }),

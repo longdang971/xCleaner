@@ -129,88 +129,6 @@ enum IntroBadge {
     }
 }
 
-// MARK: - Khối 3D
-
-/// Khối bóng loáng làm điểm nhấn thị giác cho mỗi mục — vai trò giống các vật thể 3D
-/// trong CleanMyMac, nhưng dựng hoàn toàn bằng gradient nên không cần tệp ảnh nào.
-struct GemView: View {
-    var symbol: String
-    var colors: [Color]
-    var size: CGFloat = 132
-    var floating: Bool = true
-
-    @State private var lift = false
-
-    var body: some View {
-        ZStack {
-            // Quầng tối phía sau để khối tách khỏi nền cùng tông màu
-            Circle()
-                .fill(RadialGradient(colors: [Color.black.opacity(0.34), .clear],
-                                     center: .center, startRadius: size * 0.1,
-                                     endRadius: size * 0.78))
-                .frame(width: size * 1.6, height: size * 1.6)
-                .blur(radius: size * 0.18)
-
-            // Bóng đổ màu hắt xuống dưới — tán rộng, nếu không sẽ lộ thành cái đế vuông
-            Squircle()
-                .fill(colors.last ?? .black)
-                .frame(width: size * 0.80, height: size * 0.80)
-                .offset(y: size * 0.17)
-                .blur(radius: size * 0.26)
-                .opacity(0.6)
-
-            // Thân khối: sáng ở vai trên trái, chìm hẳn ở đáy phải
-            Squircle()
-                .fill(LinearGradient(colors: colors.count >= 3
-                                     ? [colors[0], colors[1], colors[2]]
-                                     : [colors[0], colors[min(1, colors.count - 1)]],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: size, height: size)
-
-            // Ánh sáng hắt vào vai trên trái
-            Squircle()
-                .fill(RadialGradient(colors: [.white.opacity(0.85), .white.opacity(0.04)],
-                                     center: UnitPoint(x: 0.28, y: 0.2),
-                                     startRadius: 0, endRadius: size * 0.62))
-                .frame(width: size, height: size)
-                .blendMode(.softLight)
-
-            // Vệt sáng cong trên đỉnh
-            Ellipse()
-                .fill(LinearGradient(colors: [.white.opacity(0.55), .clear],
-                                     startPoint: .top, endPoint: .bottom))
-                .frame(width: size * 0.62, height: size * 0.3)
-                .offset(y: -size * 0.26)
-                .blur(radius: size * 0.05)
-
-            // Ánh phản chiếu hắt ngược từ dưới lên, mẹo quen thuộc để khối trông có khối lượng
-            Squircle()
-                .fill(RadialGradient(colors: [colors[0].opacity(0.75), .clear],
-                                     center: UnitPoint(x: 0.72, y: 0.9),
-                                     startRadius: 0, endRadius: size * 0.42))
-                .frame(width: size, height: size)
-                .blendMode(.screen)
-
-            // Cạnh kính
-            Squircle()
-                .strokeBorder(LinearGradient(colors: [.white.opacity(0.85), .white.opacity(0.10)],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing),
-                              lineWidth: size * 0.014)
-                .frame(width: size, height: size)
-
-            Image(systemName: symbol)
-                .font(.system(size: size * 0.36, weight: .medium))
-                .foregroundStyle(.white)
-                .shadow(color: (colors.last ?? .black).opacity(0.6), radius: size * 0.05, y: size * 0.02)
-        }
-        .frame(width: size * 1.25, height: size * 1.25)
-        .offset(y: lift ? -5 : 5)
-        .animation(floating ? .easeInOut(duration: 3.2).repeatForever(autoreverses: true) : nil,
-                   value: lift)
-        .onAppear { if floating { lift = true } }
-    }
-}
-
 // MARK: - Vòng quét
 
 struct ScanRing: View {
@@ -966,26 +884,6 @@ struct HeroHeadline<Trailing: View>: View {
             trailing
         }
         .frame(maxWidth: 620)
-    }
-}
-
-struct MiniRing: View {
-    var fraction: Double
-    var size: CGFloat = 40
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(Color.white.opacity(0.18), lineWidth: 4)
-            Circle().trim(from: 0, to: max(0.001, min(1, fraction)))
-                .stroke(Color.white, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(Motion.standard, value: fraction)
-            Text("\(Int((fraction * 100).rounded()))%")
-                .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                .foregroundStyle(Palette.textSecond)
-                .contentTransition(.numericText())
-        }
-        .frame(width: size, height: size)
     }
 }
 

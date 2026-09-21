@@ -75,6 +75,13 @@ final class SmartDeleteController {
     private func pump() {
         guard !busy, !queue.isEmpty else { return }
         let next = queue.removeFirst()
+        // Lọc lại lúc LẤY RA, không chỉ lúc xếp vào: cùng một app có thể vào hàng đợi hai lần
+        // (bỏ ra khỏi Thùng rác rồi xoá lại) trước khi người dùng kịp trả lời lần đầu. Chỉ lọc
+        // lúc xếp vào thì họ đóng bảng xong lại bị hỏi y hệt một lần nữa.
+        guard !SmartDeleteMemory.shared.isSuppressed(bundleID: next.bundleID) else {
+            pump()
+            return
+        }
         busy = true
         scan(next) { [weak self] items in
             guard let self else { return }

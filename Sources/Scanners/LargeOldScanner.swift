@@ -6,7 +6,6 @@ struct LargeOldScanner {
     struct Options {
         var roots: [URL] = [FileUtils.home]
         var minimumSize: Int64 = 50 * 1024 * 1024      // 50 MB
-        var oldAfterDays: Int = 180
         var maxResults: Int = 500
     }
 

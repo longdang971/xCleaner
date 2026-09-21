@@ -59,7 +59,6 @@ extension Notification.Name {
     static let xcSelectModule = Notification.Name("xCleaner.selectModule")
     static let xcOpenSettings = Notification.Name("xCleaner.openSettings")
     static let xcCheckUpdates = Notification.Name("xCleaner.checkUpdates")
-    static let xcOpenMainWindow = Notification.Name("xCleaner.openMainWindow")
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -137,11 +136,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        if let w = NSApp.windows.first(where: { !($0 is NSPanel) && $0.contentView != nil }) {
+        // Cửa sổ chính không bao giờ bị huỷ (`isReleasedWhenClosed = false` ở
+        // `WindowConfigurator`), đóng chỉ là ẩn đi — nên luôn có sẵn một cái để dựng lại.
+        if let w = NSApp.windows.first(where: { $0.identifier?.rawValue.contains("main") == true })
+            ?? NSApp.windows.first(where: { !($0 is NSPanel) && $0.contentView != nil }) {
             w.makeKeyAndOrderFront(nil)
-        } else {
-            // SwiftUI đã dẹp hẳn scene: chỉ `openWindow` mới dựng lại được.
-            NotificationCenter.default.post(name: .xcOpenMainWindow, object: nil)
         }
     }
 }
