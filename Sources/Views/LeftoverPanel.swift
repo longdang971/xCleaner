@@ -84,7 +84,6 @@ final class LeftoverPanelModel: ObservableObject {
     enum Phase: Equatable {
         case choosing
         case removing
-        case done(Int64)
     }
 
     let app: TrashedApp
@@ -116,10 +115,11 @@ final class LeftoverPanelModel: ObservableObject {
 
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Remover.perform(request) { _, _ in }
-            DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async {
                 CleanLedger.shared.record(result.freedBytes)
-                self?.phase = .done(result.freedBytes)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { done() }
+                // Xoá xong là đóng im lặng: không màn "đã dọn", và không kéo cửa sổ chính của app
+                // lên. Người dùng đang làm việc khác, xong việc thì biến mất.
+                done()
             }
         }
     }
@@ -139,7 +139,7 @@ private struct LeftoverPanelView: View {
             // Lớp đục tuyệt đối dưới cùng: cửa sổ trong suốt, mà thẻ kính thì chỉ là một màng
             // trắng mờ — thiếu lớp này là nhìn xuyên thấy app phía sau.
             skin.background
-            content
+            chooser
         }
         .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -148,16 +148,6 @@ private struct LeftoverPanelView: View {
                 .strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
         .shadow(color: .black.opacity(0.45), radius: 26, y: 12)
         .onExitCommand(perform: dismiss)
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        switch model.phase {
-        case .done(let freed):
-            doneView(freed)
-        default:
-            chooser
-        }
     }
 
     private var chooser: some View {
@@ -228,27 +218,12 @@ private struct LeftoverPanelView: View {
                 .foregroundStyle(Palette.textSecond)
             Spacer(minLength: 0)
             ActionButton(title: "Đóng", isEnabled: model.phase == .choosing, action: dismiss)
-            ActionButton(title: model.phase == .removing ? "Đang dọn…" : "Dọn",
+            ActionButton(title: model.phase == .removing ? "Đang xoá…" : "Xoá",
                          kind: .prominent,
                          isEnabled: model.phase == .choosing && !model.selected.isEmpty) {
                 model.clean(done: dismiss)
             }
         }
         .padding(.top, 14)
-    }
-
-    private func doneView(_ freed: Int64) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 54))
-                .foregroundStyle(Palette.success)
-            Text("Đã dọn \(Fmt.size(freed))")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white)
-            Text("Tàn dư của \(model.app.name) đã được xử lý.")
-                .font(.system(size: 12))
-                .foregroundStyle(Palette.textSecond)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
