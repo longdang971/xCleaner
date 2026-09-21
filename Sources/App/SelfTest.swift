@@ -47,6 +47,7 @@ enum SelfTest {
         testTrashWatcher()
         testLaunchAgent()
         testSmartDeleteController()
+        testQuitPrompt()
         print("=== \(passed) đạt, \(failed) hỏng ===")
         exit(failed == 0 ? 0 : 1)
     }
@@ -521,6 +522,52 @@ enum SelfTest {
         if case .symlinkEscape? = SafetyGuard.validate(sudoLink) { escaped = true }
         check("liên kết trỏ vào /private/var/db/sudo bị chặn", escaped,
               "(\(String(describing: SafetyGuard.validate(sudoLink))))")
+    }
+
+    // MARK: Hỏi thoát ứng dụng
+
+    @MainActor
+    private static func testQuitPrompt() {
+        print("[Thoát app] chỉ hỏi ứng dụng có mục đang được chọn")
+        let dir = makeSandbox()
+        func item(_ n: String, _ cat: String, _ on: Bool) -> CleanItem {
+            CleanItem(url: dir.appendingPathComponent(n), size: 1024,
+                      isSelected: on, category: cat)
+        }
+
+        // Thẻ gộp "Trình duyệt": mỗi trình duyệt là một phần riêng.
+        var merged = CleanGroup(
+            id: "browsers", title: "Trình duyệt", subtitle: "", icon: "globe", safety: .safe,
+            items: [item("chrome.bin", "Google Chrome", false),
+                    item("safari.bin", "Safari", true)],
+            categoryAppIDs: ["Google Chrome": "com.google.Chrome",
+                             "Safari": "com.apple.Safari"])
+
+        var ids = ScanStore.appIDsToQuit(in: [merged])
+        check("bỏ chọn hết phần Chrome thì không hỏi Chrome",
+              ids == ["com.apple.Safari"], "(được \(ids))")
+
+        merged.items[0].isSelected = true
+        ids = ScanStore.appIDsToQuit(in: [merged])
+        check("chọn cả hai phần thì hỏi cả hai",
+              Set(ids) == ["com.google.Chrome", "com.apple.Safari"], "(được \(ids))")
+
+        merged.items[1].isSelected = false
+        ids = ScanStore.appIDsToQuit(in: [merged])
+        check("đổi sang chỉ chọn Chrome thì chỉ hỏi Chrome",
+              ids == ["com.google.Chrome"], "(được \(ids))")
+
+        for i in merged.items.indices { merged.items[i].isSelected = false }
+        check("không chọn gì thì không hỏi ai",
+              ScanStore.appIDsToQuit(in: [merged]).isEmpty)
+
+        // Nhóm không chia phần thì vẫn rơi về ứng dụng của cả nhóm.
+        let plain = CleanGroup(id: "g", title: "Một app", subtitle: "", icon: "gear",
+                               safety: .safe, items: [item("x.bin", "", true)],
+                               runningBundleID: "com.example.App",
+                               appBundleID: "com.example.App")
+        check("nhóm một ứng dụng vẫn hỏi đúng nó",
+              ScanStore.appIDsToQuit(in: [plain]) == ["com.example.App"])
     }
 
     // MARK: Nhớ lựa chọn

@@ -390,20 +390,39 @@ final class ScanStore: ObservableObject {
         startCleaning(groups)
     }
 
-    private static func runningApps(in groups: [CleanGroup]) -> [PendingQuit] {
+    /// Bundle id của những ứng dụng mà **lần dọn này thật sự đụng vào dữ liệu của chúng**,
+    /// theo đúng thứ tự người dùng nhìn thấy. Không hỏi thoát ứng dụng nào ngoài danh sách này.
+    ///
+    /// Thẻ "Trình duyệt" gộp mọi trình duyệt vào một nhóm, mỗi cái là một *phần* riêng
+    /// (`categoryAppIDs`). Trước đây chỉ cần nhóm có một mục được chọn là app của **mọi** phần
+    /// bị đem ra hỏi — bỏ chọn sạch phần của Chrome mà vẫn bị bắt đóng Chrome để dọn Safari.
+    /// Nên chỉ lấy app của những phần đang có mục được chọn; mục không thuộc phần nào thì mới
+    /// rơi về app của cả nhóm.
+    static func appIDsToQuit(in groups: [CleanGroup]) -> [String] {
         var seen = Set<String>()
-        var result: [PendingQuit] = []
+        var ids: [String] = []
+        func add(_ id: String?) {
+            guard let id, seen.insert(id).inserted else { return }
+            ids.append(id)
+        }
         for g in groups {
-            var ids: [String] = g.categoryAppIDs.values.map { $0 }
-            if let b = g.runningBundleID { ids.append(b) }
-            if let b = g.appBundleID { ids.append(b) }
-            for id in ids where !seen.contains(id) && FileUtils.isRunning(bundleID: id) {
-                seen.insert(id)
-                result.append(PendingQuit(bundleID: id,
-                                          name: AppCatalog.shared.name(forBundleID: id) ?? id))
+            for item in g.items where item.isSelected {
+                if let bid = g.categoryAppIDs[item.category] {
+                    add(bid)
+                } else {
+                    add(g.runningBundleID)
+                    add(g.appBundleID)
+                }
             }
         }
-        return result
+        return ids
+    }
+
+    private static func runningApps(in groups: [CleanGroup]) -> [PendingQuit] {
+        appIDsToQuit(in: groups)
+            .filter { FileUtils.isRunning(bundleID: $0) }
+            .map { PendingQuit(bundleID: $0,
+                               name: AppCatalog.shared.name(forBundleID: $0) ?? $0) }
     }
 
     private func startCleaning(_ sourceGroups: [CleanGroup]) {
