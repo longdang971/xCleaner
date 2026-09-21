@@ -1392,6 +1392,14 @@ enum SelfTest {
         let shown = SmartDeleteController.leftoversToShow(items, bundle: t.url)
         check("bỏ chính bundle khỏi danh sách dọn", shown.count == 1)
         check("giữ lại tàn dư", shown.first?.name == "com.acme.foo")
+
+        // Nhận ra chính mình bị xoá — để còn gỡ agent và thoát, không thành cái bóng như helper
+        // SmartDelete của AppCleaner (xoá app rồi nó vẫn nằm trong RAM bật hộp thoại).
+        check("app khác thì không phải chính mình", !SmartDeleteController.isSelf(t))
+        let me = TrashedApp(url: FileUtils.homePath(".Trash/xCleaner.app"),
+                            bundleID: Bundle.main.bundleIdentifier ?? "com.pikalong.xCleaner",
+                            name: "xCleaner", version: "1.0")
+        check("nhận ra chính xCleaner bị kéo vào Thùng rác", SmartDeleteController.isSelf(me))
     }
 }
 #endif

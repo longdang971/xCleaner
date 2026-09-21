@@ -20,6 +20,13 @@ final class SmartDeleteController {
     /// Đọc công tắc trong Cài đặt rồi bật/tắt cho khớp. Gọi lúc khởi động và mỗi lần người dùng
     /// gạt công tắc.
     func applySetting() {
+        // Bundle của chính mình không còn: người dùng đã xoá xCleaner trong lúc nó không chạy.
+        // Gỡ agent rồi thoát, không thì lần đăng nhập sau launchd còn cố dựng một binary đã mất.
+        if !FileUtils.exists(Bundle.main.bundleURL) {
+            LaunchAgentInstaller.uninstall()
+            NSApp.terminate(nil)
+            return
+        }
         if Self.isOn {
             LaunchAgentInstaller.install()
             guard watcher == nil else { return }
@@ -42,10 +49,26 @@ final class SmartDeleteController {
     }
 
     private func enqueue(_ apps: [TrashedApp]) {
+        // Người dùng vừa kéo CHÍNH xCleaner vào Thùng rác.
+        //
+        // Đây là lỗi đã thấy tận mắt ở AppCleaner: xoá app rồi mà cái helper SmartDelete của nó
+        // vẫn nằm trong RAM và vẫn bật hộp thoại lên mỗi lần xoá app khác, vì xoá tệp không giết
+        // tiến trình đang chạy. Nên tự dọn: gỡ agent rồi thoát ngay, đừng để lại một cái bóng.
+        if apps.contains(where: Self.isSelf) {
+            LaunchAgentInstaller.uninstall()
+            NSApp.terminate(nil)
+            return
+        }
         for a in apps where !SmartDeleteMemory.shared.isSuppressed(bundleID: a.bundleID) {
             queue.append(a)
         }
         pump()
+    }
+
+    /// App vừa vào Thùng rác có phải chính xCleaner không.
+    static func isSelf(_ app: TrashedApp) -> Bool {
+        guard let own = Bundle.main.bundleIdentifier else { return false }
+        return own.compare(app.bundleID, options: .caseInsensitive) == .orderedSame
     }
 
     /// Mỗi lúc một cửa sổ. Kéo ba app vào Thùng rác một lượt thì hỏi lần lượt ba lần.
