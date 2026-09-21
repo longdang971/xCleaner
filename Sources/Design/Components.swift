@@ -395,7 +395,10 @@ struct CircleActionButton: View {
             .saturation(isEnabled ? 1 : 0.16)
             .brightness(isEnabled ? 0 : -0.1)
         }
-        .buttonStyle(.plain)
+        // KHÔNG dùng `.plain`, và cũng không dùng `PressableButtonStyle` như các nút khác —
+        // xem ghi chú ở `SolidPressButtonStyle`. Cả hai đều làm nửa dưới nút nhìn xuyên được
+        // trong lúc giữ chuột, mà nửa ấy nằm ngoài tấm nền nên sau lưng nó là Dock và desktop.
+        .buttonStyle(SolidPressButtonStyle())
         // KHÔNG dùng `.disabled`. macOS tự làm mờ nhãn của nút đang tắt — đo được nút chỉ còn
         // **62% độ đục** (lấy màu nút trên hai nền khác nhau rồi giải ngược ra alpha). Nửa dưới
         // nút nằm ngoài tấm nền nên 38% còn lại là nhìn thẳng xuống desktop: thấy rõ mép cửa sổ
@@ -546,6 +549,27 @@ struct PressableButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .brightness(configuration.isPressed ? -0.06 : 0)
+            .animation(.easeOut(duration: 0.09), value: configuration.isPressed)
+    }
+}
+
+/// Phản hồi khi bấm cho nút tròn ở đáy: CHỈ tối đi, không mờ và không lún.
+///
+/// Nút này là trường hợp riêng vì nửa dưới của nó thò ra ngoài tấm nền, đè lên dải trong suốt.
+/// Mọi cách làm cho chỗ ấy không còn đặc 100% đều thành một lỗ nhìn thẳng xuống Dock/desktop:
+///
+/// - `.buttonStyle(.plain)` của macOS báo "đang giữ" bằng cách hạ độ đục nhãn. Đo được trong
+///   lúc giữ chuột, **alpha ở nửa dưới nút tụt còn 219–221/255** trong khi nửa trên (nằm trên
+///   tấm nền) vẫn 255 — tức là người dùng thấy đúng phần thò ra bị trong.
+/// - `PressableButtonStyle` (lún 0,97) tránh được chuyện mờ, nhưng co lại thì cái vành 2–3px
+///   vừa nhả ra cũng để lộ nền phía sau: đo được 2% số điểm trong nút xuống dưới alpha 250.
+///
+/// Nên ở đây chỉ còn một cách an toàn: đổi màu. Tối đi 0,08 là đủ đọc ra "đang bấm" khi rê chuột
+/// vào đã sáng lên 0,06 — tổng cộng một bước nhảy 0,14, mà hình nút thì không xê dịch một pixel.
+struct SolidPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .brightness(configuration.isPressed ? -0.08 : 0)
             .animation(.easeOut(duration: 0.09), value: configuration.isPressed)
     }
 }
