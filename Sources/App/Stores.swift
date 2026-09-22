@@ -450,7 +450,7 @@ final class ScanStore: ObservableObject {
 
         let request = Remover.Request(
             items: ordered,
-            moveToTrash: settings.moveToTrash,
+            moveToTrash: Remover.movesToTrash(.junk, setting: settings.moveToTrash),
             adminPrompt: "xCleaner cần quyền quản trị để xoá \(ordered.filter(\.requiresAdmin).count) mục trong thư mục hệ thống.",
             cancel: cleanCancel)
         let throttle = ProgressThrottle(fps: 15)
@@ -782,7 +782,7 @@ final class StartupStore: ObservableObject {
                                   safety: .review)
         let request = Remover.Request(
             items: [cleanItem],
-            moveToTrash: settings.moveToTrash,
+            moveToTrash: Remover.movesToTrash(.startupItem, setting: settings.moveToTrash),
             adminPrompt: "xCleaner cần quyền quản trị để xoá mục khởi động “\(item.name)”.",
             cancel: CancelToken())
 
@@ -972,7 +972,7 @@ final class UninstallStore: ObservableObject {
 
         let request = Remover.Request(
             items: items,
-            moveToTrash: settings.moveToTrash,
+            moveToTrash: Remover.movesToTrash(.leftovers, setting: settings.moveToTrash),
             adminPrompt: "xCleaner cần quyền quản trị để gỡ \(app.name) khỏi thư mục hệ thống.")
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -1101,8 +1101,10 @@ final class LargeOldStore: ObservableObject {
         guard !items.isEmpty else { return }
 
         // Tệp cá nhân luôn vào Thùng rác để còn lấy lại được.
-        let request = Remover.Request(items: items, moveToTrash: true,
-                                      adminPrompt: "xCleaner cần quyền quản trị để xoá các tệp đã chọn.")
+        let request = Remover.Request(
+            items: items,
+            moveToTrash: Remover.movesToTrash(.personalFile, setting: false),
+            adminPrompt: "xCleaner cần quyền quản trị để xoá các tệp đã chọn.")
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Remover.perform(request) { _, _ in }
             DispatchQueue.main.async {
@@ -1222,8 +1224,10 @@ final class DuplicateStore: ObservableObject {
                 .map { CleanItem(url: $0, detail: "", size: set.size, isDirectory: false) }
         }
         guard !items.isEmpty else { return }
-        let request = Remover.Request(items: items, moveToTrash: true,
-                                      adminPrompt: "xCleaner cần quyền quản trị để xoá các tệp đã chọn.")
+        let request = Remover.Request(
+            items: items,
+            moveToTrash: Remover.movesToTrash(.personalFile, setting: false),
+            adminPrompt: "xCleaner cần quyền quản trị để xoá các tệp đã chọn.")
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Remover.perform(request) { _, _ in }
             DispatchQueue.main.async {

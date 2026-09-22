@@ -141,7 +141,10 @@ final class LeftoverPanelModel: ObservableObject {
         guard !chosen.isEmpty else { done(); return }
         phase = .removing
 
-        let toTrash = UserDefaults.standard.bool(forKey: "moveToTrash")
+        // Tàn dư LUÔN vào Thùng rác, không đọc công tắc trong Cài đặt: app vừa bị kéo vào
+        // Thùng rác thì tàn dư của nó phải nằm cạnh đó, không thì người dùng mở Thùng rác ra
+        // thấy trống và tưởng bảng này xoá hụt.
+        let toTrash = Remover.movesToTrash(.leftovers, setting: false)
         let prompt = "xCleaner cần quyền quản trị để dọn tàn dư của \(app.name)."
 
         DispatchQueue.global(qos: .userInitiated).async {
@@ -244,11 +247,18 @@ private struct LeftoverPanelView: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Text(model.selected.isEmpty
-                 ? "Chưa chọn mục nào"
-                 : "Đã chọn \(model.selected.count) mục · \(Fmt.size(model.totalSize))")
-                .font(.system(size: 11.5))
-                .foregroundStyle(Palette.textSecond)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(model.selected.isEmpty
+                     ? "Chưa chọn mục nào"
+                     : "Đã chọn \(model.selected.count) mục · \(Fmt.size(model.totalSize))")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Palette.textSecond)
+                // Nói thẳng đích đến, như mục "Gỡ ứng dụng" vẫn làm. Nút chỉ ghi "Xoá" thì người
+                // dùng không có cách nào biết tệp đi đâu.
+                Text("Chuyển vào Thùng rác")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Palette.textFaint)
+            }
             Spacer(minLength: 0)
             ActionButton(title: "Đóng", isEnabled: model.phase == .choosing, action: dismiss)
             ActionButton(title: model.phase == .removing ? "Đang xoá…" : "Xoá",

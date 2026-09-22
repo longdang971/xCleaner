@@ -3,9 +3,36 @@ import Foundation
 /// Thực hiện việc xoá. Tách hẳn khỏi phần quét để chỉ có đúng một chỗ chạm vào đĩa.
 enum Remover {
 
+    /// Loại việc đang dọn. Quyết định xem công tắc "Chuyển vào Thùng rác" trong Cài đặt có
+    /// tiếng nói hay không — xem `movesToTrash(_:setting:)`.
+    enum Kind {
+        /// Rác hệ thống, bộ nhớ đệm, bản tải về… — thứ người dùng gọi là "dọn rác".
+        case junk
+        /// Mục khởi động cùng máy: xoá hẳn tệp plist.
+        case startupItem
+        /// Tàn dư của một ứng dụng vừa bị gỡ, kể cả chính bundle app.
+        case leftovers
+        /// Tệp của chính người dùng: bản trùng lặp, tệp to và cũ.
+        case personalFile
+    }
+
+    /// Công tắc trong Cài đặt chỉ nói về việc **dọn rác**.
+    ///
+    /// Tàn dư và tệp cá nhân thì luôn vào Thùng rác, không hỏi: người dùng vừa tự tay kéo app
+    /// vào Thùng rác nên họ chờ thấy tàn dư nằm cạnh đó, và bấm nhầm thì còn lấy lại được.
+    /// Trước đây bảng tàn dư cũng đọc công tắc này, mà công tắc mặc định TẮT — nên nó xoá vĩnh
+    /// viễn trong khi người dùng đi mở Thùng rác tìm.
+    static func movesToTrash(_ kind: Kind, setting: Bool) -> Bool {
+        switch kind {
+        case .junk, .startupItem: return setting
+        case .leftovers, .personalFile: return true
+        }
+    }
+
     struct Request {
         var items: [CleanItem]
         /// Chuyển vào Thùng rác thay vì xoá vĩnh viễn (chỉ áp dụng cho tệp không cần quyền root).
+        /// Đừng đọc thẳng công tắc trong Cài đặt — hỏi `movesToTrash(_:setting:)`.
         var moveToTrash: Bool
         /// Câu hiển thị trong hộp thoại xin mật khẩu.
         var adminPrompt: String

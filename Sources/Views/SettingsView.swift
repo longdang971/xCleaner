@@ -88,8 +88,8 @@ struct SettingsView: View {
         VStack(spacing: 14) {
             SettingCard {
                 SettingToggle(
-                    title: "Chuyển vào Thùng rác thay vì xoá vĩnh viễn",
-                    detail: "Bật thì dung lượng chỉ thực sự được giải phóng sau khi bạn đổ Thùng rác. Tệp trong thư mục hệ thống vẫn bị xoá thẳng vì Thùng rác không nhận tệp của root.",
+                    title: "Dọn rác thì chuyển vào Thùng rác thay vì xoá vĩnh viễn",
+                    detail: "Bật thì dung lượng chỉ thực sự được giải phóng sau khi bạn đổ Thùng rác. Tệp trong thư mục hệ thống vẫn bị xoá thẳng vì Thùng rác không nhận tệp của root. Tàn dư của app đã gỡ, bản trùng lặp và tệp to-cũ thì luôn vào Thùng rác, không phụ thuộc công tắc này.",
                     isOn: $settings.moveToTrash, accent: accent)
             }
 

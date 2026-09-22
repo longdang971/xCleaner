@@ -18,6 +18,7 @@ enum SelfTest {
         testSafetyGuardAccepts()
         testRemoveUserFiles()
         testTrashMode()
+        testTrashPolicy()
         testEmptyContentsOnly()
         testSizeCalculation()
         testSelectionMemory()
@@ -1418,6 +1419,28 @@ enum SelfTest {
               LaunchAgentInstaller.needsRewrite(
                 existing: ["Label": "x", "ProgramArguments": [exe], "RunAtLoad": true],
                 executable: exe))
+    }
+
+    /// Dọn tàn dư LUÔN vào Thùng rác, bất kể công tắc trong Cài đặt.
+    ///
+    /// Người dùng vừa tự tay kéo app vào Thùng rác, nên họ chờ thấy tàn dư của nó nằm cạnh đó —
+    /// và bấm nhầm thì còn lấy lại được. Công tắc "Chuyển vào Thùng rác" chỉ còn nói về việc
+    /// dọn rác. Đây chính là lỗi đã thấy: công tắc mặc định TẮT nên bảng tàn dư xoá vĩnh viễn,
+    /// Thùng rác trống trơn và người dùng tưởng app dọn hụt.
+    private static func testTrashPolicy() {
+        print("[Chế độ xoá] tàn dư luôn vào Thùng rác, rác thì theo Cài đặt")
+        check("tàn dư: công tắc TẮT vẫn vào Thùng rác",
+              Remover.movesToTrash(.leftovers, setting: false))
+        check("tàn dư: công tắc BẬT thì vẫn vào Thùng rác",
+              Remover.movesToTrash(.leftovers, setting: true))
+        check("tệp cá nhân luôn vào Thùng rác",
+              Remover.movesToTrash(.personalFile, setting: false))
+        check("dọn rác: công tắc TẮT thì xoá thẳng",
+              !Remover.movesToTrash(.junk, setting: false))
+        check("dọn rác: công tắc BẬT thì vào Thùng rác",
+              Remover.movesToTrash(.junk, setting: true))
+        check("mục khởi động: theo công tắc",
+              !Remover.movesToTrash(.startupItem, setting: false))
     }
 
     @MainActor

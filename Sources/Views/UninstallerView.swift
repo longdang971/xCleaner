@@ -3,7 +3,6 @@ import AppKit
 
 struct UninstallerView: View {
     @ObservedObject var store: UninstallStore
-    @EnvironmentObject private var settings: AppSettings
     @State private var confirming = false
 
     private let skin = ModuleSkin.skin(for: .uninstaller)
@@ -200,7 +199,8 @@ struct UninstallerView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("\(store.leftovers.filter(\.isSelected).count)/\(store.leftovers.count) mục · \(Fmt.size(store.selectedLeftoverSize))")
                             .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
-                        Text(settings.moveToTrash ? "Chuyển vào Thùng rác" : "Xoá vĩnh viễn")
+                        // Tàn dư không theo công tắc trong Cài đặt nữa (xem Remover.movesToTrash).
+                        Text("Chuyển vào Thùng rác")
                             .font(.system(size: 10.5)).foregroundStyle(Palette.textFaint)
                     }
                     Spacer()
