@@ -80,6 +80,7 @@ final class UpdateController: ObservableObject {
                 NSLog("[xCleaner] update: script thay thế đã chạy")
                 // Script thay thế đang chờ tiến trình này chết; nhường chỗ cho nó.
                 try? await Task.sleep(nanoseconds: 400_000_000)
+                AppDelegate.skipHandOffOnQuit = true
                 NSApp.terminate(nil)
             } catch {
                 NSLog("[xCleaner] update: hỏng — %@", error.localizedDescription)

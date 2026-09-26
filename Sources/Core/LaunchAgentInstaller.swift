@@ -47,21 +47,54 @@ enum LaunchAgentInstaller {
         guard ProcessInfo.processInfo.environment["XCLEANER_AGENT"] == "1" else { return }
         #endif
         let existing = NSDictionary(contentsOf: plistURL) as? [String: Any]
-        guard needsRewrite(existing: existing, executable: executable) else { return }
-        try? FileManager.default.createDirectory(at: plistURL.deletingLastPathComponent(),
-                                                 withIntermediateDirectories: true)
-        (plistContents(executable: executable) as NSDictionary).write(to: plistURL, atomically: true)
+        if needsRewrite(existing: existing, executable: executable) {
+            try? FileManager.default.createDirectory(at: plistURL.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            (plistContents(executable: executable) as NSDictionary).write(to: plistURL, atomically: true)
+            // Bản đã nạp vẫn trỏ vào đường dẫn cũ; launchd không tự đọc lại plist.
+            launchctl(["bootout", domainTarget])
+        }
+        // Ghi plist thôi là CHƯA đủ: launchd chỉ đọc thư mục LaunchAgents lúc đăng nhập. Có lần
+        // service bị `bootout` (người dùng gạt tắt rồi bật lại) mà không nạp lại, thì suốt từ đó
+        // tới lần đăng nhập sau không ai trực Thùng rác — xoá app mà bảng tàn dư không hiện, và
+        // không một dòng log nào. Nạp luôn ở đây; `RunAtLoad` sẽ dựng ngay một tiến trình
+        // `--watch`, tiến trình ấy tự nhường nếu đang có bản khác chạy (xem `AppDelegate`).
+        if !isLoaded {
+            launchctl(["bootstrap", "gui/\(getuid())", plistURL.path])
+        }
+    }
+
+    /// Người dùng thoát cửa sổ chính (⌘Q) trong lúc công tắc đang bật: để launchd dựng một tiến
+    /// trình `--watch` đi trực tiếp. Không có bước này thì ⌘Q là tắt luôn chức năng tới lần đăng
+    /// nhập sau — trong khi công tắc trong Cài đặt vẫn hiện là đang BẬT.
+    static func handOff() {
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["XCLEANER_AGENT"] == "1" else { return }
+        #endif
+        guard isLoaded else { return }
+        launchctl(["kickstart", domainTarget])
+    }
+
+    private static var domainTarget: String { "gui/\(getuid())/\(label)" }
+
+    /// Service đã có trong launchd chưa (đang chạy hay không thì không quan trọng).
+    static var isLoaded: Bool { launchctl(["print", domainTarget]) == 0 }
+
+    @discardableResult
+    private static func launchctl(_ args: [String]) -> Int32 {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        p.arguments = args
+        p.standardError = FileHandle.nullDevice
+        p.standardOutput = FileHandle.nullDevice
+        do { try p.run() } catch { return -1 }
+        p.waitUntilExit()
+        return p.terminationStatus
     }
 
     static func uninstall() {
         try? FileManager.default.removeItem(at: plistURL)
         // Chưa nạp thì `bootout` báo lỗi — bình thường, nuốt luôn.
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        p.arguments = ["bootout", "gui/\(getuid())/\(label)"]
-        p.standardError = FileHandle.nullDevice
-        p.standardOutput = FileHandle.nullDevice
-        try? p.run()
-        p.waitUntilExit()
+        launchctl(["bootout", domainTarget])
     }
 }

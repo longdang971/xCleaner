@@ -87,11 +87,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
 
+        // Tiến trình trực do launchd dựng (lúc nạp agent, hoặc lúc bản có cửa sổ vừa ⌘Q bàn giao)
+        // mà thấy một bản khác còn sống: chờ nó thoát rồi nhận ca trực. Vẫn còn sống thì lặng lẽ
+        // lui — TUYỆT ĐỐI không gửi `openRequest` như nhánh dưới, không thì cửa sổ chính của bản
+        // kia bật lên mỗi lần agent được nạp.
+        if RunMode.current == .watch {
+            NSApp.setActivationPolicy(.accessory)
+            if Self.otherInstance() != nil, !Self.waitForOtherInstanceToExit(timeout: 5) {
+                NSApp.terminate(nil)
+                return
+            }
+        }
+
         // Đã có một tiến trình xCleaner khác (thường là cái đang trực dưới nền) thì nhường nó:
         // hai tiến trình cùng nghe Thùng rác là hai cửa sổ cho một lần xoá.
-        if let other = NSRunningApplication
-            .runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
-            .first(where: { $0.processIdentifier != getpid() }) {
+        if let other = Self.otherInstance() {
             // `activate` không đủ: tiến trình kia thường là cái đang TRỰC dưới nền, không có cửa
             // sổ nào để đưa lên. Kích hoạt suông là người dùng bấm icon mà màn hình không đổi gì.
             DistributedNotificationCenter.default().postNotificationName(
@@ -134,6 +144,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         DebugCapture.installIfRequested()
         #endif
+    }
+
+    /// Bỏ qua bước bàn giao cho launchd lúc thoát. Trình cập nhật bật cờ này: nó sắp thay bundle
+    /// rồi tự mở bản mới, một tiến trình trực dựng từ binary cũ lúc ấy sẽ chạy code cũ.
+    static var skipHandOffOnQuit = false
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Chỉ bản có cửa sổ mới bàn giao; bản trực mà thoát là do công tắc tắt / app bị xoá,
+        // mấy đường đó đã tự `bootout` rồi.
+        guard RunMode.current == .normal, !Self.skipHandOffOnQuit,
+              SmartDeleteController.isOn, FileUtils.exists(Bundle.main.bundleURL) else { return }
+        LaunchAgentInstaller.handOff()
+    }
+
+    private static func otherInstance() -> NSRunningApplication? {
+        NSRunningApplication
+            .runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+            .first(where: { $0.processIdentifier != getpid() && !$0.isTerminated })
+    }
+
+    /// Hỏi thẳng kernel (`kill(pid, 0)`) chứ không đọc `isTerminated`: cờ đó chỉ được cập nhật
+    /// khi run loop chạy, mà ở đây ta đang chặn chính run loop.
+    private static func waitForOtherInstanceToExit(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let alive = NSRunningApplication
+                .runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+                .contains { $0.processIdentifier != getpid() && kill($0.processIdentifier, 0) == 0 }
+            if !alive { return true }
+            usleep(200_000)
+        }
+        return false
     }
 
     /// Chỉ sống ở chế độ `--watch`. Giữ tham chiếu để gỡ khi có người mở cửa sổ thật.
